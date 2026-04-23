@@ -122,7 +122,7 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
   "timing": {
     "executor_duration_seconds": 165.0,
     "grader_duration_seconds": 26.0,
-    "total_duration_seconds": 191.0
+    "total_duration_seconds": 165.0
   },
   "claims": [
     {

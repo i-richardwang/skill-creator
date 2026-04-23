@@ -147,7 +147,7 @@ Write a JSON file with this structure:
   "timing": {
     "executor_duration_seconds": 165.0,
     "grader_duration_seconds": 26.0,
-    "total_duration_seconds": 191.0
+    "total_duration_seconds": 165.0
   },
   "claims": [
     {
@@ -199,7 +199,8 @@ Write a JSON file with this structure:
   - **transcript_chars**: Character count of transcript
 - **timing**: Wall clock timing from timing.json (if available)
   - **executor_duration_seconds**: Time spent in the executor subprocess
-  - **total_duration_seconds**: Total elapsed time for the run
+  - **grader_duration_seconds**: Time spent in the grader subprocess (usually backfilled by the runner after you exit, since you can't know your own total duration)
+  - **total_duration_seconds**: Wall-clock time for the skill execution itself — equal to `executor_duration_seconds`. Do NOT add grader time here; downstream benchmarks read this as "how long did the skill take to run" and must not be polluted by evaluation overhead.
 - **claims**: Extracted and verified claims from the output
   - **claim**: The statement being verified
   - **type**: "factual", "process", or "quality"

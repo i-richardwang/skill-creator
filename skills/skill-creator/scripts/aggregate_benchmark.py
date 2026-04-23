@@ -260,6 +260,16 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
         for r in config
     ))
 
+    # Derive actual runs_per_configuration from the data (max run_number seen).
+    # Assumes run numbering starts at 1 and is contiguous, which plan_runs in
+    # run_functional_eval.py guarantees.
+    all_run_numbers = [
+        r["run_number"]
+        for config in results.values()
+        for r in config
+    ]
+    runs_per_config = max(all_run_numbers) if all_run_numbers else 0
+
     benchmark = {
         "metadata": {
             "skill_name": skill_name or "<skill-name>",
@@ -268,7 +278,7 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
             "analyzer_model": "<model-name>",
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "evals_run": eval_ids,
-            "runs_per_configuration": 3
+            "runs_per_configuration": runs_per_config
         },
         "runs": runs,
         "run_summary": run_summary,
@@ -295,7 +305,7 @@ def generate_markdown(benchmark: dict) -> str:
         "",
         f"**Model**: {metadata['executor_model']}",
         f"**Date**: {metadata['timestamp']}",
-        f"**Evals**: {', '.join(map(str, metadata['evals_run']))} ({metadata['runs_per_configuration']} runs each per configuration)",
+        f"**Evals**: {', '.join(map(str, metadata['evals_run']))} ({metadata['runs_per_configuration']} run{'s' if metadata['runs_per_configuration'] != 1 else ''} each per configuration)",
         "",
         "## Summary",
         "",

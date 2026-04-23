@@ -221,7 +221,11 @@ def run_grader(
     timing["grader_duration_seconds"] = grader_duration
     timing_path.write_text(json.dumps(timing, indent=2))
 
-    # Backfill grader_duration_seconds into grading.json (grader can't know its own duration)
+    # Backfill grader_duration_seconds into grading.json (grader can't know its own duration).
+    # Also pin total_duration_seconds to executor wall-clock: downstream aggregate_benchmark
+    # reads this as the benchmark's "time_seconds" metric, which should mean "how long the
+    # skill took to run" — not "executor + grader overhead". Grader time is captured
+    # separately in grader_duration_seconds for diagnostics.
     grading_summary = None
     if grading_path.exists():
         try:
@@ -229,9 +233,7 @@ def run_grader(
             t = grading.setdefault("timing", {})
             t["grader_duration_seconds"] = grader_duration
             if "executor_duration_seconds" in t:
-                t["total_duration_seconds"] = (
-                    t["executor_duration_seconds"] + grader_duration
-                )
+                t["total_duration_seconds"] = t["executor_duration_seconds"]
             grading_path.write_text(json.dumps(grading, indent=2))
             grading_summary = grading.get("summary")
         except (json.JSONDecodeError, OSError):
