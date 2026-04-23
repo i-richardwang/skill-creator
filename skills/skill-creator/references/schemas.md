@@ -198,7 +198,7 @@ Output from the executor agent. Located at `<run-dir>/outputs/metrics.json`.
 
 Wall clock timing for a run. Located at `<run-dir>/timing.json`.
 
-**How to capture:** When a `claude -p` subprocess exits, parse the final `result` event from its `transcript.jsonl` (see SKILL.md "Step 3: As runs complete, capture timing data"). Unlike the prior Task-notification flow, the data is persisted in the transcript and is recoverable at any time.
+**How to capture:** `scripts/run_functional_eval.py` writes this file automatically — it parses the final `result` event from each run's `transcript.jsonl` for the top-level token/duration fields, and brackets each subprocess with wall-clock timestamps for the `executor_*` / `grader_*` fields. If you need to re-derive manually: `jq -c 'select(.type=="result")' <run-dir>/transcript.jsonl | tail -1` gives the result event. Unlike the prior Task-notification flow, this data is persisted in the transcript and recoverable at any time.
 
 ```json
 {

@@ -13,7 +13,7 @@ You have two jobs: grade the outputs, and critique the evals themselves. A passi
 You receive these parameters in your prompt:
 
 - **expectations**: List of expectations to evaluate (strings)
-- **transcript_path**: Path to the execution transcript (markdown file)
+- **transcript_path**: Path to the execution transcript (`transcript.jsonl`, stream-json format — one JSON event per line)
 - **outputs_dir**: Directory containing output files from execution
 
 ## Process

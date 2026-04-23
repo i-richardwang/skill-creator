@@ -166,51 +166,45 @@ This section is one continuous sequence — don't stop partway through. Do NOT u
 
 Put results in `<skill-name>-workspace/` as a sibling to the skill directory. Within the workspace, organize results by iteration (`iteration-1/`, `iteration-2/`, etc.) and within that, each test case gets a directory (`eval-0/`, `eval-1/`, etc.). Don't create all of this upfront — just create directories as you go.
 
-### Step 1: Spawn all runs (with-skill AND baseline) in the same turn
+### Step 1: Launch all runs (with-skill AND baseline) via the runner script
 
-For each test case, launch two `claude -p` subprocesses in the same turn — one with the skill, one without. This is important: don't spawn the with-skill runs first and come back for baselines later. Launch everything at once so it all finishes around the same time.
+All executor runs (with_skill + baseline) and all grader runs are driven by a single script: `scripts/run_functional_eval.py`. It spawns `claude -p` subprocesses in parallel, writes `transcript.jsonl` / `timing.json` / `grading.json` per run into the workspace, and prints a summary JSON to stdout.
 
-Write an `eval_metadata.json` for each test case **before** launching — it is the single source of truth for the prompt. Give each eval a descriptive name based on what it's testing — not just "eval-0". Use this name for the directory too. Assertions can be empty for now.
+Before launching, ensure `evals/evals.json` lists the test cases (see `references/schemas.md` for the schema). If you're in the middle of drafting assertions, it's fine to launch with empty `expectations` and rerun just the grader phase once assertions are ready.
 
-```json
-{
-  "eval_id": 0,
-  "eval_name": "descriptive-name-here",
-  "prompt": "The user's task prompt",
-  "assertions": []
-}
-```
-
-**Spawn template** (with-skill run):
+**Invocation** — launch as a **background Bash tool call** (`run_in_background: true`) so you can draft assertions (Step 2) while it runs:
 
 ```bash
-mkdir -p <workspace>/iteration-<N>/eval-<ID>/with_skill/outputs
-cd <workspace>/iteration-<N>/eval-<ID>/with_skill
-
-( echo "Use the skill at <path-to-skill>. Save any outputs to ./outputs/."; echo ""; \
-  jq -r '.prompt' ../eval_metadata.json ) | \
-  timeout 600 claude -p \
-    --output-format stream-json --verbose \
-    --permission-mode bypassPermissions \
-    > transcript.jsonl 2> stderr.log
+python -m scripts.run_functional_eval \
+  --evals-json <path-to-evals.json> \
+  --skill-path <path-to-skill> \
+  --workspace <skill-name>-workspace \
+  --iteration <N> \
+  --baseline-mode without_skill
 ```
 
-The four flags are the minimum-required default:
-- `--output-format stream-json --verbose` — preserves the full transcript and usage data for post-run parsing and grading
-- `--permission-mode bypassPermissions` — non-interactive; won't hang waiting for tool-permission prompts
-- `timeout 600` — 10-minute ceiling per run; override per-eval if the task is genuinely expected to take longer
+Run it **from the skill-creator directory** (so `python -m scripts.*` resolves). The script writes everything under `<workspace>/iteration-<N>/<eval-name>/{with_skill,<baseline>}/`.
 
-Nothing else is needed for the default path. The subprocess inherits the parent shell's environment, MCP servers, settings, and Claude Code auth — **same as Task-tool subagents**. Anything the main agent's shell has will flow through automatically. Only add flags when you need to deviate:
-- Custom billing / endpoint: set `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` in the env prefix
-- Skill or input files outside cwd: pass `--add-dir <path>` for each
+**Baseline modes:**
+- **Creating a new skill**: `--baseline-mode without_skill` (no skill in envelope). Baseline saves to `without_skill/`.
+- **Improving an existing skill**: `cp -r <skill-path> <workspace>/skill-snapshot/` before editing, then `--baseline-mode old_skill --snapshot-path <workspace>/skill-snapshot/`. Baseline saves to `old_skill/`.
 
-**Crucial: do NOT let `transcript.jsonl` flow into the main agent's context.** Always redirect with `>`. Stream-json emits every tool call and reasoning event from the subprocess — tens of thousands of tokens for a real task. The main agent should only read the final `result` event (Step 3) and let the grader read the full transcript as its own subprocess (Step 4).
+**Other flags** (rarely needed):
+- `--model <id>` — override the executor/grader model (defaults to your configured Claude Code model)
+- `--num-workers N` — parallelism (default 4)
+- `--default-timeout SEC` — per-run ceiling (default 600); per-eval override via a `timeout` field in `evals.json`
+- `--phase executor` / `--phase grader` — run only one phase. Use when you want to launch executors, draft assertions while they run, then grade separately
 
-**Launch mechanism:** run each spawn as its own **background Bash tool call** (`run_in_background: true`) rather than chaining them with `&` inside one foreground Bash call. Claude Code's runtime tracks each PID; you can poll completion via BashOutput. A single foreground `wait` will block past the Bash tool's own timeout.
+**Crucial: do NOT read the run `transcript.jsonl` files into the main agent's context.** Stream-json emits every tool call and reasoning event — tens of thousands of tokens per run. The grader (also a subprocess) reads each transcript; the main agent should only look at the script's summary JSON and per-run `grading.json`.
 
-**Baseline run** (same template, envelope changes):
-- **Creating a new skill**: no skill reference in the envelope — feed the raw prompt directly. Save to `without_skill/`.
-- **Improving an existing skill**: point the envelope at the old-version snapshot (`cp -r <skill-path> <workspace>/skill-snapshot/` before editing). Save to `old_skill/`.
+**Environment inheritance.** Each `claude -p` subprocess inherits the parent shell's environment, MCP servers, settings, and Claude Code auth — the only variable the script strips is `CLAUDECODE` (which would otherwise block nesting). Anything the main agent's shell has flows through automatically. Override per run via exported env vars before launching the script (e.g. `ANTHROPIC_API_KEY=... ANTHROPIC_BASE_URL=... python -m scripts.run_functional_eval ...`).
+
+**What the script does under the hood** (so you can debug if something looks off):
+- For each eval × variant, creates `<run-dir>/` and writes `eval_metadata.json` derived from `evals.json`
+- Launches `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions` with stdin = envelope (skill-path hint + outputs hint + prompt), stdout → `transcript.jsonl`, stderr → `stderr.log`, wrapped with the configured timeout
+- Parses the final `result` event from the transcript to compute tokens/duration → `timing.json`
+- Then (unless `--phase executor`) spawns the grader with `--append-system-prompt "$(cat agents/grader.md)"` and a prompt pointing at `transcript.jsonl` + `outputs/`
+- Writes `grading.json` in each run dir and backfills grader timings
 
 ### Step 2: While runs are in progress, draft assertions
 
@@ -220,35 +214,41 @@ Good assertions are objectively verifiable and have descriptive names — they s
 
 Update the `eval_metadata.json` files and `evals/evals.json` with the assertions once drafted. Also explain to the user what they'll see in the viewer — both the qualitative outputs and the quantitative benchmark.
 
-### Step 3: As runs complete, capture timing data
+### Step 3: Timing data — captured by the runner script automatically
 
-When each subprocess exits, read the final `result` event from its `transcript.jsonl` to extract timing and token usage. Save to `timing.json` in the run directory:
-
-```bash
-jq -c 'select(.type=="result")' <run-dir>/transcript.jsonl | tail -1 | jq '{
-  total_tokens: ((.usage.input_tokens // 0) + (.usage.output_tokens // 0)),
-  duration_ms: .duration_ms,
-  total_duration_seconds: (.duration_ms / 1000)
-}' > <run-dir>/timing.json
-```
-
-Use `jq -c 'select(.type=="result") | tail -1'` rather than a raw `tail -n 1` — if the subprocess crashed mid-stream, the last line may not be a clean result event.
+The script writes `timing.json` to each run directory as soon as its executor exits, and backfills grader timings when the grader phase finishes. Fields (see `references/schemas.md` for the full schema):
 
 ```json
 {
   "total_tokens": 84852,
   "duration_ms": 23332,
-  "total_duration_seconds": 23.3
+  "total_duration_seconds": 23.3,
+  "executor_start": "...",
+  "executor_end": "...",
+  "executor_duration_seconds": 25.4,
+  "grader_start": "...",
+  "grader_end": "...",
+  "grader_duration_seconds": 14.1
 }
 ```
 
-Unlike the prior Task-notification flow, this data is **persisted in the transcript** and recoverable at any time — no need to batch/capture synchronously.
+The top-level `total_tokens` / `duration_ms` / `total_duration_seconds` come from the subprocess's final `result` event; the `executor_*` / `grader_*` fields are wall-clock measurements bracketing each subprocess. Unlike the prior Task-notification flow, this data is **persisted in the transcript** and recoverable at any time — if you ever need to re-derive it manually, `jq -c 'select(.type=="result")' <run-dir>/transcript.jsonl | tail -1` gives you the result event.
 
 ### Step 4: Grade, aggregate, and launch the viewer
 
 Once all runs are done:
 
-1. **Grade each run** — launch a grader as a separate `claude -p` subprocess (using the same template as Step 1, no skill envelope). Inject grading instructions via `--append-system-prompt "$(cat <skill-creator-path>/agents/grader.md)"`, and pass the run's `transcript.jsonl` path and `outputs/` path in the prompt. The grader evaluates each assertion against the outputs and writes `grading.json` to the run directory. The grading.json expectations array must use the fields `text`, `passed`, and `evidence` (not `name`/`met`/`details` or other variants) — the viewer depends on these exact field names. For assertions that can be checked programmatically, write and run a script rather than eyeballing it — scripts are faster, more reliable, and can be reused across iterations.
+1. **Grade each run** — normally handled automatically by `run_functional_eval.py`. If you launched with `--phase executor` to interleave Step 2 work, now run the grader phase:
+   ```bash
+   python -m scripts.run_functional_eval \
+     --evals-json <path-to-evals.json> \
+     --skill-path <path-to-skill> \
+     --workspace <skill-name>-workspace \
+     --iteration <N> \
+     --baseline-mode <same-as-before> \
+     --phase grader
+   ```
+   The grader runs as a `claude -p` subprocess per run with `agents/grader.md` as its system prompt; it reads `transcript.jsonl` and `outputs/` and writes `grading.json` to the run directory. The grading.json expectations array must use the fields `text`, `passed`, and `evidence` (not `name`/`met`/`details` or other variants) — the viewer depends on these exact field names. For assertions that can be checked programmatically, the grader is instructed to write and run a script rather than eyeballing it — scripts are faster, more reliable, and can be reused across iterations.
 
 2. **Aggregate into benchmark** — run the aggregation script from the skill-creator directory:
    ```bash
