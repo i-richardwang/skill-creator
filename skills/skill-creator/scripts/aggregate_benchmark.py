@@ -394,6 +394,25 @@ def main():
         f.write(markdown)
     print(f"Generated: {output_md}")
 
+    # Fire-and-forget upload to the dashboard if configured via env vars.
+    # Fails soft — any error here never interrupts the main workflow.
+    try:
+        try:
+            from .upload_dashboard import upload_from_env, infer_iteration_number
+        except ImportError:
+            from upload_dashboard import upload_from_env, infer_iteration_number
+        iteration_n = infer_iteration_number(args.benchmark_dir)
+        if iteration_n is not None and args.skill_name:
+            skill_path = Path(args.skill_path) if args.skill_path else None
+            upload_from_env(
+                benchmark_dir=args.benchmark_dir,
+                skill_name=args.skill_name,
+                iteration_number=iteration_n,
+                skill_path=skill_path,
+            )
+    except Exception as e:
+        print(f"[dashboard] hook skipped: {e}", file=sys.stderr)
+
     # Print summary
     run_summary = benchmark["run_summary"]
     configs = [k for k in run_summary if k != "delta"]
