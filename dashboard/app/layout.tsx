@@ -1,6 +1,8 @@
-import { Geist, Geist_Mono, Noto_Sans, Playfair_Display } from "next/font/google"
+import type { Metadata } from "next"
+import { Geist_Mono, Noto_Sans, Playfair_Display } from "next/font/google"
 
 import "./globals.css"
+import { SiteHeader } from "@/components/site-header"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils";
 
@@ -13,6 +15,12 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
+export const metadata: Metadata = {
+  title: "skill evals — instrument panel",
+  description:
+    "Trajectory dashboard for Anthropic skill-creator eval runs: portfolio overview, per-skill pass-rate evolution, and per-run breakdowns.",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,8 +32,11 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", notoSans.variable, playfairDisplayHeading.variable)}
     >
-      <body>
-        <ThemeProvider>{children}</ThemeProvider>
+      <body className="min-h-svh bg-background text-foreground">
+        <ThemeProvider>
+          <SiteHeader />
+          <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+        </ThemeProvider>
       </body>
     </html>
   )

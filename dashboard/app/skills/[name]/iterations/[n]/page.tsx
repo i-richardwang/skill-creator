@@ -1,0 +1,423 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getIterationDetail } from "@/lib/queries";
+import type { RunRow } from "@/lib/queries";
+import {
+  fmtDateTime,
+  fmtDelta,
+  fmtInt,
+  fmtPct,
+  fmtRelative,
+  fmtSeconds,
+  fmtTokens,
+  shortSha,
+} from "@/lib/format";
+import {
+  Card,
+  CardBody,
+  CardEyebrow,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from "@/components/ui/table";
+
+export const dynamic = "force-dynamic";
+
+export default async function IterationPage({
+  params,
+}: {
+  params: Promise<{ name: string; n: string }>;
+}) {
+  const { name: rawName, n: rawN } = await params;
+  const name = decodeURIComponent(rawName);
+  const n = parseInt(rawN, 10);
+  if (Number.isNaN(n)) notFound();
+
+  const iter = await getIterationDetail(name, n);
+  if (!iter) notFound();
+
+  const delta =
+    iter.withSkillMean !== null && iter.withoutSkillMean !== null
+      ? iter.withSkillMean - iter.withoutSkillMean
+      : null;
+
+  const grouped = groupRunsByEval(iter.runs);
+
+  return (
+    <div className="space-y-10">
+      <header className="space-y-4">
+        <nav className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+          <Link href="/" className="hover:text-foreground">
+            Portfolio
+          </Link>
+          <span className="mx-2">/</span>
+          <Link
+            href={`/skills/${encodeURIComponent(name)}`}
+            className="hover:text-foreground"
+          >
+            {name}
+          </Link>
+          <span className="mx-2">/</span>
+          <span className="text-foreground">
+            iteration #{iter.iterationNumber}
+          </span>
+        </nav>
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <h1 className="font-heading text-4xl leading-[1.05] tracking-tight md:text-5xl">
+            Iteration
+            <span className="text-muted-foreground ml-3 font-mono text-3xl font-normal tabular-nums">
+              #{iter.iterationNumber}
+            </span>
+          </h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">
+            {iter.evalsCount ?? "—"} evals · {iter.runsPerConfiguration ?? "—"}{" "}
+            runs/config
+          </Badge>
+          {iter.gitCommitSha ? (
+            <Badge variant="muted">commit {shortSha(iter.gitCommitSha)}</Badge>
+          ) : null}
+          {iter.hostname ? (
+            <Badge variant="muted">{iter.hostname}</Badge>
+          ) : null}
+          <Badge variant="outline" title={fmtDateTime(iter.uploadedAt)}>
+            uploaded {fmtRelative(iter.uploadedAt)}
+          </Badge>
+        </div>
+      </header>
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="With skill"
+          value={fmtPct(iter.withSkillMean)}
+          hint={
+            iter.withSkillStddev !== null
+              ? `σ ±${(iter.withSkillStddev * 100).toFixed(1)}pp`
+              : undefined
+          }
+        />
+        <MetricCard
+          label="Without skill"
+          value={fmtPct(iter.withoutSkillMean)}
+          hint={
+            iter.withoutSkillStddev !== null
+              ? `σ ±${(iter.withoutSkillStddev * 100).toFixed(1)}pp`
+              : undefined
+          }
+        />
+        <MetricCard
+          label="Delta"
+          value={fmtDelta(delta)}
+          tone={
+            delta === null
+              ? "muted"
+              : delta > 0
+                ? "positive"
+                : delta < 0
+                  ? "negative"
+                  : "muted"
+          }
+          hint="with − without"
+        />
+        <MetricCard
+          label="Cost ratio"
+          value={
+            iter.withSkillTokensMean !== null &&
+            iter.withoutSkillTokensMean !== null &&
+            iter.withoutSkillTokensMean > 0
+              ? `${(iter.withSkillTokensMean / iter.withoutSkillTokensMean).toFixed(2)}×`
+              : "—"
+          }
+          hint={
+            iter.withSkillTokensMean !== null
+              ? `${fmtTokens(iter.withSkillTokensMean)} tokens`
+              : undefined
+          }
+        />
+      </section>
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="min-w-0 space-y-4">
+          <header className="border-border flex items-baseline justify-between border-b pb-3">
+            <h2 className="font-heading text-xl tracking-tight">
+              Run breakdown
+            </h2>
+            <span className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+              {iter.runs.length} total runs · grouped by eval
+            </span>
+          </header>
+          {grouped.length === 0 ? (
+            <Card>
+              <CardBody className="text-muted-foreground text-center text-sm">
+                No runs recorded for this iteration.
+              </CardBody>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {grouped.map((g) => (
+                <EvalGroup key={g.evalId} group={g} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <aside className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardEyebrow>Resource usage</CardEyebrow>
+              <CardTitle className="text-base">
+                Per-run averages (with_skill)
+              </CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-3 text-sm">
+              <KV label="Tokens" value={fmtTokens(iter.withSkillTokensMean)} />
+              <KV
+                label="Wall time"
+                value={fmtSeconds(iter.withSkillTimeSecondsMean)}
+              />
+              <div className="border-border my-2 border-t" />
+              <KV
+                label="Tokens (baseline)"
+                value={fmtTokens(iter.withoutSkillTokensMean)}
+              />
+              <KV
+                label="Wall time (baseline)"
+                value={fmtSeconds(iter.withoutSkillTimeSecondsMean)}
+              />
+            </CardBody>
+          </Card>
+
+          {iter.notes && iter.notes.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardEyebrow>Notes</CardEyebrow>
+                <CardTitle className="text-base">
+                  From aggregation
+                </CardTitle>
+              </CardHeader>
+              <CardBody>
+                <ul className="space-y-2 text-sm leading-relaxed">
+                  {iter.notes.map((n, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-muted-foreground font-mono text-[10px] leading-5 tracking-widest uppercase">
+                        #{i + 1}
+                      </span>
+                      <span>{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {iter.skillMdSnapshot ? (
+            <Card>
+              <CardHeader>
+                <CardEyebrow>SKILL.md snapshot</CardEyebrow>
+                <CardTitle className="text-base">
+                  {fmtInt(iter.skillMdSnapshot.length)} chars
+                </CardTitle>
+              </CardHeader>
+              <CardBody>
+                <details className="group">
+                  <summary className="text-muted-foreground hover:text-foreground cursor-pointer font-mono text-[10px] tracking-widest uppercase select-none">
+                    expand snapshot ↓
+                  </summary>
+                  <pre className="bg-muted border-border mt-3 max-h-96 overflow-auto border px-3 py-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                    {iter.skillMdSnapshot}
+                  </pre>
+                </details>
+              </CardBody>
+            </Card>
+          ) : null}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+  tone = "muted",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "muted" | "positive" | "negative";
+}) {
+  const valueColor =
+    tone === "positive"
+      ? "text-emerald-600 dark:text-emerald-300"
+      : tone === "negative"
+        ? "text-destructive"
+        : "";
+  return (
+    <Card>
+      <CardBody>
+        <div className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+          {label}
+        </div>
+        <div
+          className={`font-mono mt-1 text-3xl font-medium tabular-nums ${valueColor}`}
+        >
+          {value}
+        </div>
+        {hint ? (
+          <div className="text-muted-foreground mt-1 font-mono text-[10px] tracking-widest uppercase">
+            {hint}
+          </div>
+        ) : null}
+      </CardBody>
+    </Card>
+  );
+}
+
+function KV({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+        {label}
+      </span>
+      <span className="font-mono tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+type EvalBucket = {
+  evalId: number;
+  evalName: string | null;
+  withSkill: RunRow[];
+  withoutSkill: RunRow[];
+};
+
+function groupRunsByEval(runs: RunRow[]): EvalBucket[] {
+  const map = new Map<number, EvalBucket>();
+  for (const r of runs) {
+    if (!map.has(r.evalId)) {
+      map.set(r.evalId, {
+        evalId: r.evalId,
+        evalName: r.evalName,
+        withSkill: [],
+        withoutSkill: [],
+      });
+    }
+    const bucket = map.get(r.evalId)!;
+    if (r.configuration === "with_skill") bucket.withSkill.push(r);
+    else bucket.withoutSkill.push(r);
+  }
+  return [...map.values()].sort((a, b) => a.evalId - b.evalId);
+}
+
+function evalBucketMean(runs: RunRow[]): number | null {
+  const rates = runs
+    .map((r) => r.passRate)
+    .filter((v): v is number => v !== null);
+  if (rates.length === 0) return null;
+  return rates.reduce((a, b) => a + b, 0) / rates.length;
+}
+
+function EvalGroup({ group }: { group: EvalBucket }) {
+  const withMean = evalBucketMean(group.withSkill);
+  const withoutMean = evalBucketMean(group.withoutSkill);
+  const bucketDelta =
+    withMean !== null && withoutMean !== null ? withMean - withoutMean : null;
+  const rows = [...group.withSkill, ...group.withoutSkill];
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-baseline justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <CardEyebrow>eval · #{group.evalId}</CardEyebrow>
+          <CardTitle className="text-base">
+            {group.evalName ?? `eval ${group.evalId}`}
+          </CardTitle>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
+          <span className="text-muted-foreground">
+            w/ {fmtPct(withMean)} · w/o {fmtPct(withoutMean)}
+          </span>
+          {bucketDelta !== null ? (
+            <Badge
+              variant={
+                bucketDelta > 0
+                  ? "positive"
+                  : bucketDelta < 0
+                    ? "negative"
+                    : "muted"
+              }
+            >
+              {fmtDelta(bucketDelta)}
+            </Badge>
+          ) : null}
+        </div>
+      </CardHeader>
+      <Table>
+        <TableHead>
+          <tr>
+            <TableHeaderCell>Config</TableHeaderCell>
+            <TableHeaderCell>Run</TableHeaderCell>
+            <TableHeaderCell>Pass</TableHeaderCell>
+            <TableHeaderCell>Passed / Total</TableHeaderCell>
+            <TableHeaderCell>Tokens</TableHeaderCell>
+            <TableHeaderCell>Time</TableHeaderCell>
+            <TableHeaderCell>Tools</TableHeaderCell>
+            <TableHeaderCell>Errors</TableHeaderCell>
+          </tr>
+        </TableHead>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell>
+                <Badge
+                  variant={
+                    r.configuration === "with_skill" ? "outline" : "muted"
+                  }
+                >
+                  {r.configuration === "with_skill" ? "with" : "without"}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono tabular-nums">
+                #{r.runNumber}
+              </TableCell>
+              <TableCell className="font-mono font-medium tabular-nums">
+                {fmtPct(r.passRate)}
+              </TableCell>
+              <TableCell className="text-muted-foreground font-mono tabular-nums">
+                {r.passed ?? "—"} / {r.total ?? "—"}
+              </TableCell>
+              <TableCell className="text-muted-foreground font-mono tabular-nums">
+                {fmtTokens(r.tokens)}
+              </TableCell>
+              <TableCell className="text-muted-foreground font-mono tabular-nums">
+                {fmtSeconds(r.timeSeconds)}
+              </TableCell>
+              <TableCell className="text-muted-foreground font-mono tabular-nums">
+                {fmtInt(r.toolCalls)}
+              </TableCell>
+              <TableCell className="font-mono tabular-nums">
+                {r.errors !== null && r.errors > 0 ? (
+                  <span className="text-destructive">{r.errors}</span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {r.errors ?? "—"}
+                  </span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}

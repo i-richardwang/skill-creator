@@ -53,34 +53,51 @@ function toStringArray(v: unknown): string[] | null {
   return v.filter((x): x is string => typeof x === "string");
 }
 
-function extractIterationSummary(benchmark: any) {
-  const rs = benchmark?.run_summary ?? {};
-  const ws = rs.with_skill ?? {};
-  const wos = rs.without_skill ?? {};
-  const meta = benchmark?.metadata ?? {};
+type JsonObject = Record<string, unknown>;
+
+function asObj(v: unknown): JsonObject {
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as JsonObject)
+    : {};
+}
+
+function extractIterationSummary(benchmark: unknown) {
+  const b = asObj(benchmark);
+  const rs = asObj(b.run_summary);
+  const ws = asObj(rs.with_skill);
+  const wos = asObj(rs.without_skill);
+  const wsPass = asObj(ws.pass_rate);
+  const wsTok = asObj(ws.tokens);
+  const wsTime = asObj(ws.time_seconds);
+  const wosPass = asObj(wos.pass_rate);
+  const wosTok = asObj(wos.tokens);
+  const wosTime = asObj(wos.time_seconds);
+  const meta = asObj(b.metadata);
   const evalsRun = Array.isArray(meta.evals_run) ? meta.evals_run.length : null;
 
   return {
-    withSkillPassRateMean: toNumericString(ws.pass_rate?.mean),
-    withSkillPassRateStddev: toNumericString(ws.pass_rate?.stddev),
-    withoutSkillPassRateMean: toNumericString(wos.pass_rate?.mean),
-    withoutSkillPassRateStddev: toNumericString(wos.pass_rate?.stddev),
-    withSkillTokensMean: toReal(ws.tokens?.mean),
-    withSkillTimeSecondsMean: toReal(ws.time_seconds?.mean),
-    withoutSkillTokensMean: toReal(wos.tokens?.mean),
-    withoutSkillTimeSecondsMean: toReal(wos.time_seconds?.mean),
+    withSkillPassRateMean: toNumericString(wsPass.mean),
+    withSkillPassRateStddev: toNumericString(wsPass.stddev),
+    withoutSkillPassRateMean: toNumericString(wosPass.mean),
+    withoutSkillPassRateStddev: toNumericString(wosPass.stddev),
+    withSkillTokensMean: toReal(wsTok.mean),
+    withSkillTimeSecondsMean: toReal(wsTime.mean),
+    withoutSkillTokensMean: toReal(wosTok.mean),
+    withoutSkillTimeSecondsMean: toReal(wosTime.mean),
     runsPerConfiguration: toInt(meta.runs_per_configuration),
     evalsCount: evalsRun,
-    notes: toStringArray(benchmark?.notes),
+    notes: toStringArray(b.notes),
   };
 }
 
-function buildBenchmarkRunMap(benchmark: any) {
-  const map = new Map<string, any>();
-  const runs = Array.isArray(benchmark?.runs) ? benchmark.runs : [];
+function buildBenchmarkRunMap(benchmark: unknown) {
+  const b = asObj(benchmark);
+  const map = new Map<string, JsonObject>();
+  const runs = Array.isArray(b.runs) ? b.runs : [];
   for (const r of runs) {
-    const key = `${r.eval_id}-${r.configuration}-${r.run_number}`;
-    map.set(key, r);
+    const obj = asObj(r);
+    const key = `${obj.eval_id}-${obj.configuration}-${obj.run_number}`;
+    map.set(key, obj);
   }
   return map;
 }
@@ -164,11 +181,13 @@ export async function POST(request: Request) {
         const runRows = incomingRuns.map((r) => {
           const key = `${r.eval_id}-${r.configuration}-${r.run_number}`;
           const br = benchmarkRunMap.get(key);
-          const rr = br?.result ?? {};
+          const rr = asObj(br?.result);
           return {
             iterationId,
             evalId: r.eval_id,
-            evalName: r.eval_name ?? br?.eval_name ?? null,
+            evalName:
+              r.eval_name ??
+              (typeof br?.eval_name === "string" ? br.eval_name : null),
             configuration: r.configuration,
             runNumber: r.run_number,
             passRate: toNumericString(rr.pass_rate),
