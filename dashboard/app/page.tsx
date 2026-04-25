@@ -4,7 +4,7 @@ import { fmtInt, fmtPct, fmtRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   Card,
-  CardBody,
+  CardContent,
   CardEyebrow,
   CardFooter,
   CardHeader,
@@ -119,7 +119,7 @@ function SkillCard({
             {skill.name}
           </CardTitle>
         </CardHeader>
-        <CardBody>
+        <CardContent>
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-4xl font-medium tabular-nums">
               {fmtPct(skill.latestPassRate, 1)}
@@ -128,7 +128,7 @@ function SkillCard({
               with-skill pass rate
             </span>
           </div>
-        </CardBody>
+        </CardContent>
         <CardFooter>
           <span>{skill.iterationsCount} iter</span>
           <span>{fmtRelative(skill.updatedAt)}</span>

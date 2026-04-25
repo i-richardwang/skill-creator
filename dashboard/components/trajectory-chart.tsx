@@ -5,11 +5,11 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 
 export type TrajectoryDatum = {
   iteration: number;
@@ -28,14 +28,18 @@ type Props = {
 const C_WITH = "oklch(0.62 0.14 150)";
 const C_WITHOUT = "oklch(0.60 0.11 55)";
 
+const chartConfig = {
+  with_skill: { label: "with_skill", color: C_WITH },
+  without_skill: { label: "without_skill", color: C_WITHOUT },
+} satisfies ChartConfig;
+
 export function TrajectoryChart({ data }: Props) {
   return (
-    <div className="h-80 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={data}
-          margin={{ top: 16, right: 16, bottom: 8, left: -8 }}
-        >
+    <ChartContainer config={chartConfig} className="aspect-auto h-80 w-full">
+      <ComposedChart
+        data={data}
+        margin={{ top: 16, right: 16, bottom: 8, left: -8 }}
+      >
           <defs>
             <linearGradient id="band-with" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={C_WITH} stopOpacity={0.18} />
@@ -131,9 +135,8 @@ export function TrajectoryChart({ data }: Props) {
             isAnimationActive={false}
             connectNulls
           />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
+      </ComposedChart>
+    </ChartContainer>
   );
 }
 

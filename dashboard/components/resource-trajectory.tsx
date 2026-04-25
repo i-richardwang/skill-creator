@@ -4,11 +4,11 @@ import {
   CartesianGrid,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { fmtSeconds, fmtTokens } from "@/lib/format";
 
 export type ResourceTrajectoryDatum = {
@@ -21,6 +21,11 @@ export type ResourceTrajectoryDatum = {
 
 const C_WITH = "oklch(0.62 0.14 150)";
 const C_WITHOUT = "oklch(0.60 0.11 55)";
+
+const chartConfig = {
+  with_skill: { label: "with_skill", color: C_WITH },
+  without_skill: { label: "without_skill", color: C_WITHOUT },
+} satisfies ChartConfig;
 
 type Metric = "tokens" | "seconds";
 
@@ -92,12 +97,14 @@ function ResourcePanel({
           </span>
         </div>
       </div>
-      <div className="h-56 w-full px-1 py-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{ top: 8, right: 12, bottom: 4, left: 4 }}
-          >
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-56 w-full px-1 py-2"
+      >
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 12, bottom: 4, left: 4 }}
+        >
             <CartesianGrid
               stroke="var(--border)"
               strokeDasharray="2 4"
@@ -153,9 +160,8 @@ function ResourcePanel({
               isAnimationActive={false}
               connectNulls
             />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+        </LineChart>
+      </ChartContainer>
     </div>
   );
 }

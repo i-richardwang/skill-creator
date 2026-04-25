@@ -16,7 +16,7 @@ import {
   fmtTokens,
   shortSha,
 } from "@/lib/format";
-import { Card, CardBody } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   TrajectoryChartClient,
@@ -105,7 +105,7 @@ export default async function EvalDetailPage({
           </Badge>
           {latest?.withSkillMean !== null &&
           latest?.withSkillMean !== undefined ? (
-            <Badge variant="muted">
+            <Badge variant="secondary">
               latest w/ {fmtPct(latest.withSkillMean)}
             </Badge>
           ) : null}
@@ -115,8 +115,8 @@ export default async function EvalDetailPage({
                 latestDelta > 0
                   ? "positive"
                   : latestDelta < 0
-                    ? "negative"
-                    : "muted"
+                    ? "destructive"
+                    : "secondary"
               }
             >
               vs without {fmtDelta(latestDelta)}
@@ -128,8 +128,8 @@ export default async function EvalDetailPage({
                 lifetimeDelta > 0
                   ? "positive"
                   : lifetimeDelta < 0
-                    ? "negative"
-                    : "muted"
+                    ? "destructive"
+                    : "secondary"
               }
             >
               lifetime {fmtDelta(lifetimeDelta)}
@@ -151,7 +151,7 @@ export default async function EvalDetailPage({
           subtitle="this eval, across iterations"
         />
         <Card>
-          <CardBody className="px-2 py-2">
+          <CardContent className="px-2 py-2">
             {trajectoryData.length === 0 ? (
               <div className="text-muted-foreground flex h-80 items-center justify-center font-mono text-[10px] tracking-widest uppercase">
                 no data
@@ -159,7 +159,7 @@ export default async function EvalDetailPage({
             ) : (
               <TrajectoryChartClient data={trajectoryData} />
             )}
-          </CardBody>
+          </CardContent>
         </Card>
       </section>
 
@@ -242,17 +242,17 @@ function TaskSection({
       <SectionHeading title="Task" subtitle="what the agent is asked to do" />
       {!hasContent ? (
         <Card>
-          <CardBody className="text-muted-foreground text-sm">
+          <CardContent className="text-muted-foreground text-sm">
             No task definition uploaded for this eval. Upload the skill&apos;s{" "}
             <code className="font-mono text-xs">evals/evals.json</code> with
             the{" "}
             <code className="font-mono text-xs">--skill-path</code> flag to see
             prompt and expected output here.
-          </CardBody>
+          </CardContent>
         </Card>
       ) : (
         <Card>
-          <CardBody className="space-y-6">
+          <CardContent className="space-y-6">
             {prompt ? (
               <Field label="Prompt">
                 <pre className="bg-muted/40 border-border overflow-auto border-l-2 px-4 py-3 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">
@@ -290,7 +290,7 @@ function TaskSection({
                 </ul>
               </Field>
             ) : null}
-          </CardBody>
+          </CardContent>
         </Card>
       )}
     </section>
@@ -357,7 +357,7 @@ function IterationResult({
           {delta !== null ? (
             <Badge
               variant={
-                delta > 0 ? "positive" : delta < 0 ? "negative" : "muted"
+                delta > 0 ? "positive" : delta < 0 ? "destructive" : "secondary"
               }
             >
               {fmtDelta(delta)}

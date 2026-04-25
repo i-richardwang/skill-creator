@@ -14,14 +14,14 @@ import {
   fmtTokens,
   shortSha,
 } from "@/lib/format";
-import { Card, CardBody } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
   TableCell,
+  TableHeader,
   TableHead,
-  TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -124,13 +124,13 @@ export default async function SkillPage({
           <LegendHint />
         </header>
         <Card>
-          <CardBody className="px-2 py-2">
+          <CardContent className="px-2 py-2">
             {points.length === 0 ? (
               <EmptyChart />
             ) : (
               <TrajectoryChartClient data={chartData} />
             )}
-          </CardBody>
+          </CardContent>
         </Card>
       </section>
 
@@ -231,12 +231,12 @@ function KpiRow({
         value={fmtDelta(latestDelta)}
         tone={
           latestDelta === null
-            ? "muted"
+            ? "secondary"
             : latestDelta > 0
               ? "positive"
               : latestDelta < 0
-                ? "negative"
-                : "muted"
+                ? "destructive"
+                : "secondary"
         }
         hint="pass-rate delta this iteration"
       />
@@ -245,12 +245,12 @@ function KpiRow({
         value={fmtDelta(trendDelta)}
         tone={
           trendDelta === null
-            ? "muted"
+            ? "secondary"
             : trendDelta > 0
               ? "positive"
               : trendDelta < 0
-                ? "negative"
-                : "muted"
+                ? "destructive"
+                : "secondary"
         }
         hint="with_skill lifetime movement"
       />
@@ -269,22 +269,22 @@ function Kpi({
   label,
   value,
   hint,
-  tone = "muted",
+  tone = "secondary",
 }: {
   label: string;
   value: string;
   hint?: string;
-  tone?: "muted" | "positive" | "negative";
+  tone?: "secondary" | "positive" | "destructive";
 }) {
   const valueColor =
     tone === "positive"
       ? "text-emerald-600 dark:text-emerald-300"
-      : tone === "negative"
+      : tone === "destructive"
         ? "text-destructive"
         : "";
   return (
     <Card>
-      <CardBody>
+      <CardContent>
         <div className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
           {label}
         </div>
@@ -296,7 +296,7 @@ function Kpi({
         {hint ? (
           <div className="text-muted-foreground mt-1 text-xs">{hint}</div>
         ) : null}
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }
@@ -353,9 +353,9 @@ function IterationsTable({
   if (points.length === 0) {
     return (
       <Card>
-        <CardBody className="text-muted-foreground text-center text-sm">
+        <CardContent className="text-muted-foreground text-center text-sm">
           No iterations yet.
-        </CardBody>
+        </CardContent>
       </Card>
     );
   }
@@ -367,18 +367,18 @@ function IterationsTable({
   return (
     <Card>
       <Table>
-        <TableHead>
+        <TableHeader>
           <tr>
-            <TableHeaderCell>Iter</TableHeaderCell>
-            <TableHeaderCell>With skill</TableHeaderCell>
-            <TableHeaderCell>Without skill</TableHeaderCell>
-            <TableHeaderCell>Δ</TableHeaderCell>
-            <TableHeaderCell>Tokens (w/)</TableHeaderCell>
-            <TableHeaderCell>Time (w/)</TableHeaderCell>
-            <TableHeaderCell>Commit</TableHeaderCell>
-            <TableHeaderCell>Uploaded</TableHeaderCell>
+            <TableHead>Iter</TableHead>
+            <TableHead>With skill</TableHead>
+            <TableHead>Without skill</TableHead>
+            <TableHead>Δ</TableHead>
+            <TableHead>Tokens (w/)</TableHead>
+            <TableHead>Time (w/)</TableHead>
+            <TableHead>Commit</TableHead>
+            <TableHead>Uploaded</TableHead>
           </tr>
-        </TableHead>
+        </TableHeader>
         <TableBody>
           {sorted.map((p) => {
             const delta =
@@ -425,8 +425,8 @@ function IterationsTable({
                         delta > 0
                           ? "positive"
                           : delta < 0
-                            ? "negative"
-                            : "muted"
+                            ? "destructive"
+                            : "secondary"
                       }
                     >
                       {fmtDelta(delta)}

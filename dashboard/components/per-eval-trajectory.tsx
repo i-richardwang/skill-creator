@@ -5,11 +5,12 @@ import {
   CartesianGrid,
   LineChart,
   Line,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
+import { fmtDelta, fmtPct } from "@/lib/format";
 
 export type PerEvalPoint = {
   iterationNumber: number;
@@ -26,6 +27,11 @@ export type PerEvalTrajectoryDatum = {
 const C_WITH = "oklch(0.62 0.14 150)";
 const C_WITHOUT = "oklch(0.60 0.11 55)";
 
+const chartConfig = {
+  with_skill: { label: "with_skill", color: C_WITH },
+  without_skill: { label: "without_skill", color: C_WITHOUT },
+} satisfies ChartConfig;
+
 export function PerEvalTrajectorySparkline({
   evalName,
   evalId,
@@ -37,10 +43,7 @@ export function PerEvalTrajectorySparkline({
   const latest = points[points.length - 1];
   const first = points[0];
   const delta =
-    latest?.withSkillMean !== null &&
-    latest?.withSkillMean !== undefined &&
-    first?.withSkillMean !== null &&
-    first?.withSkillMean !== undefined
+    latest?.withSkillMean != null && first?.withSkillMean != null
       ? latest.withSkillMean - first.withSkillMean
       : null;
 
@@ -57,9 +60,7 @@ export function PerEvalTrajectorySparkline({
         </div>
         <div className="flex flex-col items-end gap-0.5 font-mono tabular-nums">
           <span className="text-xl font-medium">
-            {latest?.withSkillMean !== null && latest?.withSkillMean !== undefined
-              ? `${(latest.withSkillMean * 100).toFixed(0)}%`
-              : "—"}
+            {fmtPct(latest?.withSkillMean ?? null, 0)}
           </span>
           {delta !== null ? (
             <span
@@ -72,15 +73,16 @@ export function PerEvalTrajectorySparkline({
                     : "text-muted-foreground")
               }
             >
-              {delta > 0 ? "+" : ""}
-              {(delta * 100).toFixed(1)}pp
+              {fmtDelta(delta)}
             </span>
           ) : null}
         </div>
       </div>
-      <div className="h-28 w-full px-1 py-1">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 6, right: 10, bottom: 0, left: -20 }}>
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-28 w-full px-1 py-1"
+      >
+        <LineChart data={points} margin={{ top: 6, right: 10, bottom: 0, left: -20 }}>
             <CartesianGrid
               stroke="var(--border)"
               strokeDasharray="2 4"
@@ -132,9 +134,8 @@ export function PerEvalTrajectorySparkline({
               isAnimationActive={false}
               connectNulls
             />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+        </LineChart>
+      </ChartContainer>
     </div>
   );
 

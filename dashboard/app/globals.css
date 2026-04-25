@@ -126,4 +126,17 @@
   html {
     @apply font-sans;
     }
+  /* Suppress focus outline on shadcn ChartContainer and any of its descendants.
+     The global * { outline-ring/50 } above paints a focus ring on the SVG
+     surface, the tooltip-cursor <line>, and the chart container itself when
+     Recharts moves focus. shadcn's outline-hidden classes only cover surface/
+     layer/sector — the rest needs explicit suppression. */
+  [data-slot="chart"],
+  [data-slot="chart"] *,
+  [data-slot="chart"]:focus,
+  [data-slot="chart"]:focus-visible,
+  [data-slot="chart"] *:focus,
+  [data-slot="chart"] *:focus-visible {
+    outline: none !important;
+    }
 }

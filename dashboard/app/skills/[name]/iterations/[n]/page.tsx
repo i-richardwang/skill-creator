@@ -14,7 +14,7 @@ import {
 } from "@/lib/format";
 import {
   Card,
-  CardBody,
+  CardContent,
   CardEyebrow,
   CardHeader,
   CardTitle,
@@ -82,10 +82,10 @@ export default async function IterationPage({
             runs/config
           </Badge>
           {iter.gitCommitSha ? (
-            <Badge variant="muted">commit {shortSha(iter.gitCommitSha)}</Badge>
+            <Badge variant="secondary">commit {shortSha(iter.gitCommitSha)}</Badge>
           ) : null}
           {iter.hostname ? (
-            <Badge variant="muted">{iter.hostname}</Badge>
+            <Badge variant="secondary">{iter.hostname}</Badge>
           ) : null}
           <Badge variant="outline" title={fmtDateTime(iter.uploadedAt)}>
             uploaded {fmtRelative(iter.uploadedAt)}
@@ -117,12 +117,12 @@ export default async function IterationPage({
           value={fmtDelta(delta)}
           tone={
             delta === null
-              ? "muted"
+              ? "secondary"
               : delta > 0
                 ? "positive"
                 : delta < 0
-                  ? "negative"
-                  : "muted"
+                  ? "destructive"
+                  : "secondary"
           }
           hint="with − without"
         />
@@ -155,9 +155,9 @@ export default async function IterationPage({
           </header>
           {grouped.length === 0 ? (
             <Card>
-              <CardBody className="text-muted-foreground text-center text-sm">
+              <CardContent className="text-muted-foreground text-center text-sm">
                 No runs recorded for this iteration.
-              </CardBody>
+              </CardContent>
             </Card>
           ) : (
             <div className="space-y-6">
@@ -180,7 +180,7 @@ export default async function IterationPage({
                 Per-run averages (with_skill)
               </CardTitle>
             </CardHeader>
-            <CardBody className="space-y-3 text-sm">
+            <CardContent className="space-y-3 text-sm">
               <KV label="Tokens" value={fmtTokens(iter.withSkillTokensMean)} />
               <KV
                 label="Wall time"
@@ -195,7 +195,7 @@ export default async function IterationPage({
                 label="Wall time (baseline)"
                 value={fmtSeconds(iter.withoutSkillTimeSecondsMean)}
               />
-            </CardBody>
+            </CardContent>
           </Card>
 
           {iter.notes && iter.notes.length > 0 ? (
@@ -206,7 +206,7 @@ export default async function IterationPage({
                   From aggregation
                 </CardTitle>
               </CardHeader>
-              <CardBody>
+              <CardContent>
                 <ul className="space-y-2 text-sm leading-relaxed">
                   {iter.notes.map((n, i) => (
                     <li key={i} className="flex gap-2">
@@ -217,7 +217,7 @@ export default async function IterationPage({
                     </li>
                   ))}
                 </ul>
-              </CardBody>
+              </CardContent>
             </Card>
           ) : null}
 
@@ -229,7 +229,7 @@ export default async function IterationPage({
                   {fmtInt(iter.skillMdSnapshot.length)} chars
                 </CardTitle>
               </CardHeader>
-              <CardBody>
+              <CardContent>
                 <details className="group">
                   <summary className="text-muted-foreground hover:text-foreground cursor-pointer font-mono text-[10px] tracking-widest uppercase select-none">
                     expand snapshot ↓
@@ -238,7 +238,7 @@ export default async function IterationPage({
                     {iter.skillMdSnapshot}
                   </pre>
                 </details>
-              </CardBody>
+              </CardContent>
             </Card>
           ) : null}
         </aside>
@@ -251,22 +251,22 @@ function MetricCard({
   label,
   value,
   hint,
-  tone = "muted",
+  tone = "secondary",
 }: {
   label: string;
   value: string;
   hint?: string;
-  tone?: "muted" | "positive" | "negative";
+  tone?: "secondary" | "positive" | "destructive";
 }) {
   const valueColor =
     tone === "positive"
       ? "text-emerald-600 dark:text-emerald-300"
-      : tone === "negative"
+      : tone === "destructive"
         ? "text-destructive"
         : "";
   return (
     <Card>
-      <CardBody>
+      <CardContent>
         <div className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
           {label}
         </div>
@@ -280,7 +280,7 @@ function MetricCard({
             {hint}
           </div>
         ) : null}
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }
@@ -364,8 +364,8 @@ function EvalGroup({
                 bucketDelta > 0
                   ? "positive"
                   : bucketDelta < 0
-                    ? "negative"
-                    : "muted"
+                    ? "destructive"
+                    : "secondary"
               }
             >
               {fmtDelta(bucketDelta)}
@@ -428,7 +428,7 @@ function RunRowDetails({ run: r }: { run: RunRow }) {
       >
         <span>
           <Badge
-            variant={r.configuration === "with_skill" ? "outline" : "muted"}
+            variant={r.configuration === "with_skill" ? "outline" : "secondary"}
           >
             {r.configuration === "with_skill" ? "with" : "without"}
           </Badge>
