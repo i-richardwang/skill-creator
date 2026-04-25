@@ -114,9 +114,24 @@ def _read_evals_definition(skill_path: Path) -> Optional[list]:
         return None
     try:
         data = json.loads(evals_path.read_text())
-    except Exception:
+    except Exception as e:
+        print(
+            f"[dashboard] could not parse {evals_path}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
         return None
     evals = data.get("evals") if isinstance(data, dict) else None
+    if evals is None:
+        print(
+            f"[dashboard] {evals_path} has no top-level 'evals' array; skipping definition upload",
+            file=sys.stderr,
+        )
+    elif not isinstance(evals, list):
+        print(
+            f"[dashboard] {evals_path} 'evals' is not an array; skipping definition upload",
+            file=sys.stderr,
+        )
+        return None
     return evals if isinstance(evals, list) else None
 
 

@@ -339,7 +339,7 @@ export async function getSkillPerEvalTrajectory(
       r.eval_id,
       MAX(r.eval_name) AS eval_name,
       r.configuration,
-      AVG(r.pass_rate::float)::text AS mean_pass_rate
+      AVG(r.pass_rate)::text AS mean_pass_rate
     FROM ${schema.iterations} i
     JOIN ${schema.runs} r ON r.iteration_id = i.id
     WHERE i.skill_id = ${skill.id}
