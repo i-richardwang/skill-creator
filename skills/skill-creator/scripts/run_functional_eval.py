@@ -15,7 +15,6 @@ env inherits everything except CLAUDECODE so `claude -p` can nest inside a
 Claude Code session.
 """
 
-import argparse
 import json
 import os
 import shutil
@@ -896,56 +895,5 @@ def run_all(
         "executors": [_serialize_executor_result(r) for r in executor_results],
         "graders": grader_results,
     }
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run functional evals via claude -p. Variants come from evals.json.",
-    )
-    parser.add_argument("--evals-json", required=True, help="Path to evals.json (new schema; see scripts/config.py)")
-    parser.add_argument("--skill-path", required=True, help="Path to the skill being iterated on (mount=self target)")
-    parser.add_argument("--workspace", required=True, help="Workspace directory; iteration-N/ goes inside")
-    parser.add_argument("--iteration", type=int, required=True)
-    parser.add_argument("--snapshot-path", default=None,
-                        help="Path to skill snapshot. Used by any variant with mount=snapshot. "
-                             "Defaults to <workspace>/skill-snapshot/, auto-created from --skill-path if missing.")
-    parser.add_argument("--num-workers", type=int, default=None,
-                        help="Override evals.json defaults.num_workers")
-    parser.add_argument("--default-timeout", type=int, default=None,
-                        help="Override evals.json defaults.timeout_s")
-    parser.add_argument("--runs-per-config", type=int, default=None,
-                        help="Override evals.json defaults.runs_per_variant")
-    parser.add_argument("--model", default=None,
-                        help="Override evals.json default_model")
-    parser.add_argument("--phase", choices=["all", "executor", "grader"], default="all",
-                        help="'executor' only runs Step 1+3, 'grader' only runs Step 4 (expects existing transcripts).")
-    parser.add_argument("--grader-md", default=None, help="Path to grader.md (default: <this-script>/../agents/grader.md)")
-    parser.add_argument("--resume", action="store_true",
-                        help="Skip runs whose transcript already shows executor success "
-                             "(or grading.json exists, for the grader phase). Crash-safe.")
-    parser.add_argument("--skill-name", default=None,
-                        help="Override evals.json skill_name (which defaults to the skill directory name).")
-    args = parser.parse_args()
-
-    summary = run_all(
-        evals_json=Path(args.evals_json),
-        skill_path=Path(args.skill_path),
-        workspace=Path(args.workspace),
-        iteration=args.iteration,
-        snapshot_path=Path(args.snapshot_path) if args.snapshot_path else None,
-        num_workers=args.num_workers,
-        default_timeout=args.default_timeout,
-        runs_per_config=args.runs_per_config,
-        model=args.model,
-        phase=args.phase,
-        grader_md=Path(args.grader_md) if args.grader_md else None,
-        resume=args.resume,
-        skill_name=args.skill_name,
-    )
-    print(json.dumps(summary, indent=2))
-
-
-if __name__ == "__main__":
-    main()
 
 

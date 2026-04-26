@@ -7,12 +7,15 @@ import { checkUploadAuth } from "@/lib/upload-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Variant names are user-chosen (declared in evals.json). Cap the length to
-// avoid pathological inputs landing in the runs.configuration text column.
+// Variant names are user-chosen (declared in evals.json) and end up as
+// directory names + dashboard column keys. Restrict to identifier-like
+// characters so they're safe to display, log, and join on.
+const variantName = z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/);
+
 const incomingRunSchema = z.object({
   eval_id: z.number().int(),
   eval_name: z.string().max(500).optional(),
-  configuration: z.string().min(1).max(200),
+  configuration: variantName,
   run_number: z.number().int(),
   grading: z.any().optional(),
 });
@@ -82,16 +85,20 @@ function variantSummary(rs: JsonObject, variant: string | null) {
   };
 }
 
+function asVariantName(v: unknown): string | null {
+  return typeof v === "string" && variantName.safeParse(v).success ? v : null;
+}
+
 function extractIterationSummary(benchmark: unknown) {
   const b = asObj(benchmark);
   const meta = asObj(b.metadata);
   const rs = asObj(b.run_summary);
 
-  const declaredVariants = toStringArray(meta.variants) ?? [];
-  const primary =
-    typeof meta.primary_variant === "string" ? meta.primary_variant : null;
-  const baseline =
-    typeof meta.baseline_variant === "string" ? meta.baseline_variant : null;
+  const declaredVariants = (toStringArray(meta.variants) ?? []).filter(
+    (n) => variantName.safeParse(n).success,
+  );
+  const primary = asVariantName(meta.primary_variant);
+  const baseline = asVariantName(meta.baseline_variant);
 
   const p = variantSummary(rs, primary);
   const bl = variantSummary(rs, baseline);

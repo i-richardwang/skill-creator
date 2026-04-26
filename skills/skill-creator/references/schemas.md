@@ -208,7 +208,7 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
     {
       "eval_id": 1,
       "eval_name": "Ocean",
-      "configuration": "with_skill",
+      "configuration": "primary",
       "run_number": 1,
       "result": {
         "pass_rate": 0.85,
@@ -231,12 +231,12 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
   ],
 
   "run_summary": {
-    "with_skill": {
+    "primary": {
       "pass_rate": {"mean": 0.85, "stddev": 0.05, "min": 0.80, "max": 0.90},
       "time_seconds": {"mean": 45.0, "stddev": 12.0, "min": 32.0, "max": 58.0},
       "tokens": {"mean": 3800, "stddev": 400, "min": 3200, "max": 4100}
     },
-    "without_skill": {
+    "baseline": {
       "pass_rate": {"mean": 0.35, "stddev": 0.08, "min": 0.28, "max": 0.45},
       "time_seconds": {"mean": 32.0, "stddev": 8.0, "min": 24.0, "max": 42.0},
       "tokens": {"mean": 2100, "stddev": 300, "min": 1800, "max": 2500}
@@ -266,12 +266,10 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
 - `runs[]`: Individual run results
   - `eval_id`: Numeric eval identifier
   - `eval_name`: Human-readable eval name (used as section header in the viewer)
-  - `configuration`: Must be `"with_skill"` or `"without_skill"` (the viewer uses this exact string for grouping and color coding)
+  - `configuration`: Variant name from `evals.json` (user-chosen, e.g. `"primary"` / `"baseline"` or `"with_skill"` / `"without_skill"`). The dashboard groups runs by this string and matches it against `metadata.primary_variant` / `metadata.baseline_variant`.
   - `run_number`: Integer run number (1, 2, 3...)
   - `result`: Nested object with `pass_rate`, `passed`, `total`, `time_seconds`, `tokens`, `errors`
-- `run_summary`: Statistical aggregates per configuration
-  - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
-  - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
+- `run_summary`: Statistical aggregates keyed by variant name (matching `runs[].configuration`). Each variant entry contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields. `delta` holds difference strings like `"+0.50"`, `"+13.0"`, `"+1700"` (computed as `primary_variant − baseline_variant`).
 - `notes`: Freeform observations from the analyzer
 
 **Important:** The viewer reads these field names exactly. Using `config` instead of `configuration`, or putting `pass_rate` at the top level of a run instead of nested under `result`, will cause the viewer to show empty/zero values. Always reference this schema when generating benchmark.json manually.

@@ -36,61 +36,54 @@ from . import (
     run_loop,
 )
 from .config import (
-    CONFIG_VERSION,
+    CaseConfig,
     ConfigError,
+    EvalsConfig,
+    FunctionalDefaults,
+    TriggerQuery,
+    TriggersConfig,
+    VariantConfig,
     find_evals_config,
-    load_evals_config,
 )
 
 
 # --- init -------------------------------------------------------------------
+#
+# Templates round-trip through the pydantic models so every default value
+# (runs_per_variant, timeout_s, trigger_threshold, holdout, ...) lives in
+# config.py only. Adding a new default never requires editing this file.
 
 
-EVALS_TEMPLATE = {
-    "version": CONFIG_VERSION,
-    "skill_name": None,
-    "default_model": None,
-    "variants": [
-        {"name": "with_skill", "mount": "self"},
-        {"name": "without_skill", "mount": "none"},
-    ],
-    "defaults": {
-        "primary_variant": "with_skill",
-        "baseline_variant": "without_skill",
-        "runs_per_variant": 1,
-        "timeout_s": 600,
-        "num_workers": 4,
-    },
-    "cases": [
-        {
-            "id": 1,
-            "name": "example case",
-            "prompt": "Replace this with the task you want to test.",
-            "expectations": [
-                "The output contains the expected result.",
-            ],
-        }
-    ],
-}
+def _evals_template(skill_name: str) -> dict:
+    return EvalsConfig(
+        skill_name=skill_name,
+        variants=[
+            VariantConfig(name="with_skill", mount="self"),
+            VariantConfig(name="without_skill", mount="none"),
+        ],
+        defaults=FunctionalDefaults(
+            primary_variant="with_skill",
+            baseline_variant="without_skill",
+        ),
+        cases=[
+            CaseConfig(
+                id=1,
+                name="example case",
+                prompt="Replace this with the task you want to test.",
+                expectations=["The output contains the expected result."],
+            )
+        ],
+    ).model_dump(exclude_none=True)
 
 
-TRIGGERS_TEMPLATE = {
-    "version": CONFIG_VERSION,
-    "skill_name": None,
-    "default_model": None,
-    "defaults": {
-        "runs_per_query": 3,
-        "trigger_threshold": 0.5,
-        "timeout_s": 30,
-        "num_workers": 10,
-        "max_iterations": 5,
-        "holdout": 0.4,
-    },
-    "queries": [
-        {"query": "Example query that should trigger the skill", "should_trigger": True},
-        {"query": "Example unrelated query", "should_trigger": False},
-    ],
-}
+def _triggers_template(skill_name: str) -> dict:
+    return TriggersConfig(
+        skill_name=skill_name,
+        queries=[
+            TriggerQuery(query="Example query that should trigger the skill", should_trigger=True),
+            TriggerQuery(query="Example unrelated query", should_trigger=False),
+        ],
+    ).model_dump(exclude_none=True)
 
 
 def cmd_init(args: argparse.Namespace) -> dict:
@@ -105,16 +98,14 @@ def cmd_init(args: argparse.Namespace) -> dict:
     if evals_path.exists() and not args.force:
         skipped.append(str(evals_path))
     else:
-        template = {**EVALS_TEMPLATE, "skill_name": skill_path.name}
-        evals_path.write_text(json.dumps(template, indent=2) + "\n")
+        evals_path.write_text(json.dumps(_evals_template(skill_path.name), indent=2) + "\n")
         created.append(str(evals_path))
 
     triggers_path = skill_path / "triggers.json"
     if triggers_path.exists() and not args.force:
         skipped.append(str(triggers_path))
     else:
-        template = {**TRIGGERS_TEMPLATE, "skill_name": skill_path.name}
-        triggers_path.write_text(json.dumps(template, indent=2) + "\n")
+        triggers_path.write_text(json.dumps(_triggers_template(skill_path.name), indent=2) + "\n")
         created.append(str(triggers_path))
 
     return {"status": "ok", "created": created, "skipped": skipped}
@@ -268,21 +259,25 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--force", action="store_true", help="Overwrite existing snapshot.")
     sp.set_defaults(handler=cmd_snapshot)
 
+    # run / iterate share the executor flag set
+    def _add_run_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--skill-path", required=True)
+        p.add_argument("--workspace", required=True)
+        p.add_argument("--iteration", type=int, required=True)
+        p.add_argument("--evals-json", default=None)
+        p.add_argument("--snapshot-path", default=None)
+        p.add_argument("--num-workers", type=int, default=None)
+        p.add_argument("--default-timeout", type=int, default=None)
+        p.add_argument("--runs-per-config", type=int, default=None)
+        p.add_argument("--model", default=None)
+        p.add_argument("--phase", choices=["all", "executor", "grader"], default="all")
+        p.add_argument("--grader-md", default=None)
+        p.add_argument("--resume", action="store_true")
+        p.add_argument("--skill-name", default=None)
+
     # run
     sp = sub.add_parser("run", help="Run executors + graders for one iteration.")
-    sp.add_argument("--skill-path", required=True)
-    sp.add_argument("--workspace", required=True)
-    sp.add_argument("--iteration", type=int, required=True)
-    sp.add_argument("--evals-json", default=None)
-    sp.add_argument("--snapshot-path", default=None)
-    sp.add_argument("--num-workers", type=int, default=None)
-    sp.add_argument("--default-timeout", type=int, default=None)
-    sp.add_argument("--runs-per-config", type=int, default=None)
-    sp.add_argument("--model", default=None)
-    sp.add_argument("--phase", choices=["all", "executor", "grader"], default="all")
-    sp.add_argument("--grader-md", default=None)
-    sp.add_argument("--resume", action="store_true")
-    sp.add_argument("--skill-name", default=None)
+    _add_run_args(sp)
     sp.set_defaults(handler=cmd_run)
 
     # aggregate
@@ -294,19 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # iterate
     sp = sub.add_parser("iterate", help="Full pipeline: run + aggregate + upload + view.")
-    sp.add_argument("--skill-path", required=True)
-    sp.add_argument("--workspace", required=True)
-    sp.add_argument("--iteration", type=int, required=True)
-    sp.add_argument("--evals-json", default=None)
-    sp.add_argument("--snapshot-path", default=None)
-    sp.add_argument("--num-workers", type=int, default=None)
-    sp.add_argument("--default-timeout", type=int, default=None)
-    sp.add_argument("--runs-per-config", type=int, default=None)
-    sp.add_argument("--model", default=None)
-    sp.add_argument("--phase", choices=["all", "executor", "grader"], default="all")
-    sp.add_argument("--grader-md", default=None)
-    sp.add_argument("--resume", action="store_true")
-    sp.add_argument("--skill-name", default=None)
+    _add_run_args(sp)
     sp.add_argument("--no-view", action="store_true")
     sp.add_argument("--no-aggregate", action="store_true")
     sp.add_argument("--previous-iteration", type=int, default=None)
