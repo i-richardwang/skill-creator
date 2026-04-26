@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import {
   getSkillTrajectory,
   getSkillPerEvalTrajectory,
+  getSkillCurrentSource,
 } from "@/lib/queries";
 import type { IterationPoint } from "@/lib/queries";
+import { SkillMdCard } from "@/components/skill-md-card";
+import { SkillFilesCard } from "@/components/skill-files-card";
 import {
   fmtDateTime,
   fmtDelta,
@@ -43,11 +46,18 @@ export default async function SkillPage({
 }) {
   const { name: rawName } = await params;
   const name = decodeURIComponent(rawName);
-  const [skill, perEval] = await Promise.all([
+  const [skill, perEval, currentSource] = await Promise.all([
     getSkillTrajectory(name),
     getSkillPerEvalTrajectory(name),
+    getSkillCurrentSource(name),
   ]);
   if (!skill) notFound();
+
+  const hasCurrentSource =
+    currentSource !== null &&
+    (currentSource.skillMdSnapshot !== null ||
+      (currentSource.skillFiles !== null &&
+        Object.keys(currentSource.skillFiles).length > 0));
 
   const points = skill.points;
   const latest = points[points.length - 1] ?? null;
@@ -175,6 +185,42 @@ export default async function SkillPage({
             primaryLabel={primaryLabel}
             baselineLabel={baselineLabel}
           />
+        </section>
+      ) : null}
+
+      {hasCurrentSource && currentSource ? (
+        <section className="space-y-4">
+          <header className="border-border flex items-baseline justify-between border-b pb-3">
+            <h2 className="font-heading text-xl tracking-tight">
+              Current source
+            </h2>
+            <span className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+              snapshot from{" "}
+              <Link
+                href={`/skills/${encodeURIComponent(skill.name)}/iterations/${currentSource.iterationNumber}`}
+                className="hover:text-foreground underline-offset-4 hover:underline"
+              >
+                iter #{currentSource.iterationNumber}
+              </Link>
+            </span>
+          </header>
+          <div className="space-y-4">
+            <SkillMdCard
+              skillName={skill.name}
+              iterationNumber={currentSource.iterationNumber}
+              current={currentSource.skillMdSnapshot}
+              previous={null}
+              previousIterationNumber={null}
+              caption={`Live SKILL.md as of iteration #${currentSource.iterationNumber}.`}
+            />
+            <SkillFilesCard
+              skillName={skill.name}
+              current={currentSource.skillFiles}
+              previous={null}
+              previousIterationNumber={null}
+              caption={`Supporting files captured with iteration #${currentSource.iterationNumber}.`}
+            />
+          </div>
         </section>
       ) : null}
 

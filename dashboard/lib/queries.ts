@@ -356,6 +356,43 @@ export async function getIterationDetail(
   };
 }
 
+export type SkillCurrentSource = {
+  iterationNumber: number;
+  skillMdSnapshot: string | null;
+  skillFiles: Record<string, string> | null;
+};
+
+// Latest iteration's source snapshot only — used by the skill page to render
+// the "current source" view without bloating getSkillTrajectory's row size.
+export async function getSkillCurrentSource(
+  name: string,
+): Promise<SkillCurrentSource | null> {
+  const [skill] = await db
+    .select()
+    .from(schema.skills)
+    .where(eq(schema.skills.name, name))
+    .limit(1);
+  if (!skill) return null;
+
+  const [iter] = await db
+    .select({
+      iterationNumber: schema.iterations.iterationNumber,
+      skillMdSnapshot: schema.iterations.skillMdSnapshot,
+      skillFiles: schema.iterations.skillFiles,
+    })
+    .from(schema.iterations)
+    .where(eq(schema.iterations.skillId, skill.id))
+    .orderBy(desc(schema.iterations.iterationNumber))
+    .limit(1);
+  if (!iter) return null;
+
+  return {
+    iterationNumber: iter.iterationNumber,
+    skillMdSnapshot: iter.skillMdSnapshot,
+    skillFiles: asSkillFiles(iter.skillFiles),
+  };
+}
+
 export type PerEvalPoint = {
   iterationNumber: number;
   primaryMean: number | null;

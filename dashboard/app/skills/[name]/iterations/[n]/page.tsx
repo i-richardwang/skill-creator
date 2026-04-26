@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SkillMdCard } from "@/components/skill-md-card";
+import { SkillFilesCard } from "@/components/skill-files-card";
 import type { EvalDefinition, Expectation } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -225,16 +226,47 @@ export default async function IterationPage({
               </CardContent>
             </Card>
           ) : null}
-
-          <SkillMdCard
-            skillName={name}
-            iterationNumber={iter.iterationNumber}
-            current={iter.skillMdSnapshot}
-            previous={iter.previousSkillMdSnapshot}
-            previousIterationNumber={iter.previousIterationNumber}
-          />
         </aside>
       </div>
+
+      {(iter.skillMdSnapshot ||
+        (iter.skillFiles && Object.keys(iter.skillFiles).length > 0)) ? (
+        <section className="space-y-4">
+          <header className="border-border flex items-baseline justify-between border-b pb-3">
+            <h2 className="font-heading text-xl tracking-tight">Source diff</h2>
+            <span className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase">
+              {iter.previousIterationNumber !== null ? (
+                <>
+                  vs{" "}
+                  <Link
+                    href={`/skills/${encodeURIComponent(name)}/iterations/${iter.previousIterationNumber}`}
+                    className="hover:text-foreground underline-offset-4 hover:underline"
+                  >
+                    iter #{iter.previousIterationNumber}
+                  </Link>
+                </>
+              ) : (
+                "initial version"
+              )}
+            </span>
+          </header>
+          <div className="space-y-4">
+            <SkillMdCard
+              skillName={name}
+              iterationNumber={iter.iterationNumber}
+              current={iter.skillMdSnapshot}
+              previous={iter.previousSkillMdSnapshot}
+              previousIterationNumber={iter.previousIterationNumber}
+            />
+            <SkillFilesCard
+              skillName={name}
+              current={iter.skillFiles}
+              previous={iter.previousSkillFiles}
+              previousIterationNumber={iter.previousIterationNumber}
+            />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
