@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SkillMdCard } from "@/components/skill-md-card";
 import type { EvalDefinition, Expectation } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -225,26 +226,13 @@ export default async function IterationPage({
             </Card>
           ) : null}
 
-          {iter.skillMdSnapshot ? (
-            <Card>
-              <CardHeader>
-                <CardEyebrow>SKILL.md snapshot</CardEyebrow>
-                <CardTitle className="text-base">
-                  {fmtInt(iter.skillMdSnapshot.length)} chars
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <details className="group">
-                  <summary className="text-muted-foreground hover:text-foreground cursor-pointer font-mono text-[10px] tracking-widest uppercase select-none">
-                    expand snapshot ↓
-                  </summary>
-                  <pre className="bg-muted border-border mt-3 max-h-96 overflow-auto border px-3 py-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-                    {iter.skillMdSnapshot}
-                  </pre>
-                </details>
-              </CardContent>
-            </Card>
-          ) : null}
+          <SkillMdCard
+            skillName={name}
+            iterationNumber={iter.iterationNumber}
+            current={iter.skillMdSnapshot}
+            previous={iter.previousSkillMdSnapshot}
+            previousIterationNumber={iter.previousIterationNumber}
+          />
         </aside>
       </div>
     </div>

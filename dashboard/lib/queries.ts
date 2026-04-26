@@ -239,6 +239,8 @@ export type IterationDetail = {
   evalsCount: number | null;
   notes: string[] | null;
   skillMdSnapshot: string | null;
+  previousIterationNumber: number | null;
+  previousSkillMdSnapshot: string | null;
   gitCommitSha: string | null;
   hostname: string | null;
   uploadedAt: Date;
@@ -279,6 +281,23 @@ export async function getIterationDetail(
       asc(schema.runs.runNumber),
     );
 
+  // Closest prior iteration's SKILL.md snapshot for the diff view. Walks
+  // backwards by iteration number so a missing N−1 still finds N−2 etc.
+  const [prev] = await db
+    .select({
+      iterationNumber: schema.iterations.iterationNumber,
+      skillMdSnapshot: schema.iterations.skillMdSnapshot,
+    })
+    .from(schema.iterations)
+    .where(
+      and(
+        eq(schema.iterations.skillId, skill.id),
+        sql`${schema.iterations.iterationNumber} < ${iterationNumber}`,
+      ),
+    )
+    .orderBy(desc(schema.iterations.iterationNumber))
+    .limit(1);
+
   const toNum = (v: string | null) => (v === null ? null : Number(v));
 
   return {
@@ -298,6 +317,8 @@ export async function getIterationDetail(
     evalsCount: iter.evalsCount,
     notes: iter.notes,
     skillMdSnapshot: iter.skillMdSnapshot,
+    previousIterationNumber: prev?.iterationNumber ?? null,
+    previousSkillMdSnapshot: prev?.skillMdSnapshot ?? null,
     gitCommitSha: iter.gitCommitSha,
     hostname: iter.hostname,
     uploadedAt: iter.uploadedAt,
