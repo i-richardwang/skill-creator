@@ -22,6 +22,8 @@ import {
   TrajectoryChartClient,
   type TrajectoryDatum,
 } from "@/components/trajectory-chart-client";
+import { ExpectationMatrixCard } from "@/components/expectation-matrix";
+import { buildExpectationMatrix } from "@/lib/expectation-matrix";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +82,8 @@ export default async function EvalDetailPage({
   const canonicalExpectations: string[] =
     detail.definition?.expectations ??
     inferExpectationTextsFromIterations(detail.iterations);
+
+  const matrix = buildExpectationMatrix(detail.iterations);
 
   return (
     <div className="space-y-12">
@@ -174,6 +178,16 @@ export default async function EvalDetailPage({
           </CardContent>
         </Card>
       </section>
+
+      {matrix.rows.length > 0 ? (
+        <section className="space-y-4">
+          <SectionHeading
+            title="Expectation matrix"
+            subtitle="which expectations changed across iterations"
+          />
+          <ExpectationMatrixCard matrix={matrix} />
+        </section>
+      ) : null}
 
       <section className="space-y-6">
         <SectionHeading
