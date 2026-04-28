@@ -2,8 +2,8 @@
 
 Two JSON files per skill, both validated by `scripts/config.py`:
 
-- `<skill>/evals.json` — functional eval cases + variants (consumed by `skill-eval run/iterate`)
-- `<skill>/triggers.json` — trigger eval queries (consumed by `skill-eval trigger-eval/trigger-loop`)
+- `<skill>/evals.json` — functional eval cases + variants (consumed by `better-skills run/iterate`)
+- `<skill>/triggers.json` — trigger eval queries (consumed by `better-skills trigger-eval/trigger-loop`)
 
 Both default to `<skill>/<file>.json`. Legacy fallback: `<skill>/evals/<file>.json`.
 

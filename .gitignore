@@ -9,3 +9,9 @@ __pycache__/
 .factory/
 skills-lock.json
 
+# Python build artefacts (better-skills CLI)
+*.egg-info/
+build/
+dist/
+.eggs/
+

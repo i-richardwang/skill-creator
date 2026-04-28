@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""skill-eval — single CLI surface for the skill-creator evaluation pipelines.
+"""better-skills — single CLI surface for the skill-creator evaluation pipelines.
 
 Subcommands:
 
@@ -17,7 +17,7 @@ Subcommands:
     trigger-loop     Iterative eval+improve loop with train/test split.
 
 Each subcommand prints structured JSON to stdout and progress to stderr. Run
-`skill-eval <subcommand> --help` for details.
+`better-skills <subcommand> --help` for details.
 """
 
 from __future__ import annotations
@@ -200,7 +200,7 @@ def cmd_view(args: argparse.Namespace) -> dict:
     benchmark_path = iteration_dir / "benchmark.json"
     if not benchmark_path.exists():
         raise SystemExit(
-            f"benchmark.json missing at {benchmark_path}; run `skill-eval aggregate {iteration_dir}` first"
+            f"benchmark.json missing at {benchmark_path}; run `better-skills aggregate {iteration_dir}` first"
         )
     skill_name = args.skill_name
     if not skill_name:
@@ -240,7 +240,7 @@ def cmd_trigger_loop(args: argparse.Namespace) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="skill-eval",
+        prog="better-skills",
         description="Single CLI for the skill-creator evaluation pipelines.",
     )
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")

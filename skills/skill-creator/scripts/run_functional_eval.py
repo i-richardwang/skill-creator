@@ -770,7 +770,7 @@ def run_all(
 
     `evals_json` is the new-format config (see scripts/config.py). Variants and
     defaults come from there; CLI arguments override the config defaults when
-    provided. Used directly by the `skill-eval` CLI dispatcher.
+    provided. Used directly by the `better-skills` CLI dispatcher.
     """
     evals_json = Path(evals_json).resolve()
     skill_path = Path(skill_path).resolve()

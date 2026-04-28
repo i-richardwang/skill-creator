@@ -25,6 +25,7 @@ Many skills in this repo are open source (Apache 2.0). We've also included the d
 - [./skills](./skills): Skill examples for Creative & Design, Development & Technical, Enterprise & Communication, and Document Skills
 - [./spec](./spec): The Agent Skills specification
 - [./template](./template): Skill template
+- [./dashboard](./dashboard): Web dashboard that archives skill iteration history (Next.js + PostgreSQL)
 
 # Installation
 
@@ -39,6 +40,24 @@ Install globally:
 ```bash
 npx skills add i-richardwang/skill-creator -g
 ```
+
+# `better-skills` CLI
+
+The [`skill-creator`](./skills/skill-creator) skill ships with **`better-skills`**, a Python CLI for authoring and iteratively improving Agent Skills. Subcommands cover the full lifecycle: scaffolding `evals.json` templates, capturing skill snapshots, running parallel `claude -p` evaluations across variants (with/without/old-version), aggregating per-iteration benchmarks, optimising descriptions for trigger accuracy, and uploading results to the dashboard.
+
+```bash
+# From the skill-creator skill directory:
+cd skills/skill-creator
+pip install -e .
+
+# Now available on PATH:
+better-skills --help
+better-skills init <skill-path>
+better-skills iterate --skill-path <skill-path> --workspace <name>-eval
+better-skills view
+```
+
+See [`skills/skill-creator/SKILL.md`](./skills/skill-creator/SKILL.md) for the authoring methodology and [`skills/skill-creator/references/`](./skills/skill-creator/references) for the eval / trigger schemas.
 
 # Creating a Basic Skill
 

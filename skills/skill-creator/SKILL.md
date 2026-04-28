@@ -188,13 +188,13 @@ The on-disk layout the orchestrator builds:
                 └── outputs/
 ```
 
-The `eval-<id>` / `run-<k>` naming is convention — `skill-eval aggregate`, the viewer, and the dashboard upload all expect it. Variant directory names come from your `evals.json` (e.g. `with_skill`, `without_skill`, `old_skill`) — they're declared in the `variants:` list and not hardcoded anywhere in the scripts.
+The `eval-<id>` / `run-<k>` naming is convention — `better-skills aggregate`, the viewer, and the dashboard upload all expect it. Variant directory names come from your `evals.json` (e.g. `with_skill`, `without_skill`, `old_skill`) — they're declared in the `variants:` list and not hardcoded anywhere in the scripts.
 
-### Step 1: Run one full iteration with `skill-eval iterate`
+### Step 1: Run one full iteration with `better-skills iterate`
 
-`scripts/cli.py` exposes a single `skill-eval` CLI with one subcommand per pipeline stage. `iterate` is the default — it snapshots the skill (when needed), runs all executors + graders in parallel, writes a per-iteration manifest, aggregates into `benchmark.json`/`benchmark.md`, and launches the viewer in the background — all from one command.
+`scripts/cli.py` exposes a single `better-skills` CLI with one subcommand per pipeline stage. `iterate` is the default — it snapshots the skill (when needed), runs all executors + graders in parallel, writes a per-iteration manifest, aggregates into `benchmark.json`/`benchmark.md`, and launches the viewer in the background — all from one command.
 
-Before launching, ensure `<skill>/evals.json` exists with `variants` + `defaults` + `cases` (see `references/evals-schema.md` for the schema, or `skill-eval init <skill-path>` to scaffold a starting template).
+Before launching, ensure `<skill>/evals.json` exists with `variants` + `defaults` + `cases` (see `references/evals-schema.md` for the schema, or `better-skills init <skill-path>` to scaffold a starting template).
 
 **Invocation** — launch as a **background Bash tool call** (`run_in_background: true`) so you can draft assertions while it runs:
 
@@ -333,7 +333,7 @@ kill <viewer_pid> 2>/dev/null
 
 ### Advanced: dropping below `iterate`
 
-`iterate` is a thin orchestrator over `skill-eval`'s other subcommands. They stay supported for finer control:
+`iterate` is a thin orchestrator over `better-skills`'s other subcommands. They stay supported for finer control:
 
 - **Scaffold a skill's eval configs**: `python -m scripts.cli init <skill-path>` — writes a starter `evals.json` + `triggers.json`.
 - **Just snapshot**: `python -m scripts.cli snapshot <skill-path> --workspace <ws>` — creates `<ws>/skill-snapshot/` if absent. Pass `--force` to overwrite.

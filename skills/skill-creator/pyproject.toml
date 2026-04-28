@@ -1,0 +1,60 @@
+# better-skills — CLI for authoring, evaluating, and iterating on Claude
+# Agent Skills. Lives inside the skill-creator skill directory because the
+# scripts ARE the skill's tools — `pip install -e .` from this folder
+# exposes the `better-skills` command without moving any code.
+#
+# Scope:
+#   pyproject.toml + the `scripts/` package only — the SKILL.md / agents/
+#   /references/ /assets/ /eval-viewer/ files in this directory are skill
+#   content, not Python sources, and are excluded from the wheel.
+#
+# Dependencies are intentionally minimal: stdlib + pydantic for config
+# validation + pyyaml for parsing user-authored evals.json variants.
+# Heavy lifting (parallel `claude -p` subprocesses, transcript parsing,
+# benchmark aggregation) all uses subprocess + json — no extra packages.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "better-skills"
+version = "0.1.0"
+description = "CLI for authoring, evaluating, and iteratively improving Claude Agent Skills."
+readme = "SKILL.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE.txt" }
+authors = [{ name = "Richard Wang" }]
+keywords = ["claude", "agent", "skills", "eval", "llm"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = [
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+better-skills = "scripts.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/i-richardwang/skill-creator"
+Repository = "https://github.com/i-richardwang/skill-creator"
+Issues = "https://github.com/i-richardwang/skill-creator/issues"
+
+[tool.setuptools]
+# Flat-layout: the `scripts` package lives next to this pyproject.toml.
+packages = ["scripts"]
+
+[tool.setuptools.package-data]
+# No bundled data — everything that ships in the wheel is .py source.
+scripts = []
