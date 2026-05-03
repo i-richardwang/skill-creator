@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""better-skills — single CLI surface for the skill-creator evaluation pipelines.
+"""better-skills — single CLI surface for the Agent Skills evaluation pipelines.
 
 Subcommands:
 
@@ -241,7 +241,7 @@ def cmd_trigger_loop(args: argparse.Namespace) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="better-skills",
-        description="Single CLI for the skill-creator evaluation pipelines.",
+        description="Single CLI for the Agent Skills evaluation pipelines.",
     )
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 

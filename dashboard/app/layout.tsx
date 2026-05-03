@@ -18,7 +18,7 @@ const fontMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "skill evals — instrument panel",
   description:
-    "Trajectory dashboard for Anthropic skill-creator eval runs: portfolio overview, per-skill pass-rate evolution, and per-run breakdowns.",
+    "Trajectory dashboard for Agent Skill eval runs: portfolio overview, per-skill pass-rate evolution, and per-run breakdowns.",
 };
 
 export default function RootLayout({

@@ -1,4 +1,4 @@
-"""End-to-end iteration orchestrator for skill-creator.
+"""End-to-end iteration orchestrator for better-skills.
 
 Driven by `scripts.cli iterate`. Wraps the per-iteration ritual:
 

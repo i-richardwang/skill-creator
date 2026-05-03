@@ -3,7 +3,7 @@
 Web dashboard that archives and visualises **skill iteration history** —
 benchmark trajectories, per-iteration SKILL.md diffs, and per-eval pass-rate
 trends — across every skill that gets evaluated through the
-[`better-skills`](../skills/skill-creator/) CLI.
+[`better-skills`](../skills/better-skills/) CLI.
 
 The CLI's `iterate` command writes a `manifest.json` + `benchmark.json` per
 iteration locally, then `upload_dashboard.py` POSTs the snapshot (skill

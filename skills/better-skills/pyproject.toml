@@ -1,5 +1,5 @@
 # better-skills — CLI for authoring, evaluating, and iterating on Claude
-# Agent Skills. Lives inside the skill-creator skill directory because the
+# Agent Skills. Lives inside the better-skills skill directory because the
 # scripts ARE the skill's tools — `pip install -e .` from this folder
 # exposes the `better-skills` command without moving any code.
 #
@@ -47,9 +47,9 @@ dependencies = [
 better-skills = "scripts.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/i-richardwang/skill-creator"
-Repository = "https://github.com/i-richardwang/skill-creator"
-Issues = "https://github.com/i-richardwang/skill-creator/issues"
+Homepage = "https://github.com/i-richardwang/better-skills"
+Repository = "https://github.com/i-richardwang/better-skills"
+Issues = "https://github.com/i-richardwang/better-skills/issues"
 
 [tool.setuptools]
 # Flat-layout: the `scripts` package lives next to this pyproject.toml.

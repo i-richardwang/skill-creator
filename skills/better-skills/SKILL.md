@@ -1,9 +1,9 @@
 ---
-name: skill-creator
+name: better-skills
 description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
 ---
 
-# Skill Creator
+# Better Skills
 
 A skill for creating new skills and iteratively improving them.
 
@@ -205,7 +205,7 @@ python -m scripts.cli iterate \
   --iteration <N>
 ```
 
-Run it **from the skill-creator directory** (so `python -m scripts.*` resolves).
+Run it **from the better-skills directory** (so `python -m scripts.*` resolves).
 
 **Baseline modes** are now declared in evals.json's `variants:` list, not via a CLI flag:
 - **Creating a new skill**: scaffold puts `with_skill` (mount=self) + `without_skill` (mount=none) — baseline runs Claude with no skill mounted.

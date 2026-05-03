@@ -1,4 +1,4 @@
-"""Configuration models for skill-creator evals.
+"""Configuration models for better-skills evals.
 
 Two config files per skill:
 

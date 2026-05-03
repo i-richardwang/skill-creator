@@ -32,22 +32,22 @@ Many skills in this repo are open source (Apache 2.0). We've also included the d
 Install via [skills.sh](https://skills.sh) CLI:
 
 ```bash
-npx skills add i-richardwang/skill-creator
+npx skills add i-richardwang/better-skills
 ```
 
 Install globally:
 
 ```bash
-npx skills add i-richardwang/skill-creator -g
+npx skills add i-richardwang/better-skills -g
 ```
 
 # `better-skills` CLI
 
-The [`skill-creator`](./skills/skill-creator) skill ships with **`better-skills`**, a Python CLI for authoring and iteratively improving Agent Skills. Subcommands cover the full lifecycle: scaffolding `evals.json` templates, capturing skill snapshots, running parallel `claude -p` evaluations across variants (with/without/old-version), aggregating per-iteration benchmarks, optimising descriptions for trigger accuracy, and uploading results to the dashboard.
+The [`better-skills` skill](./skills/better-skills) ships with a Python CLI of the same name for authoring and iteratively improving Agent Skills. Subcommands cover the full lifecycle: scaffolding `evals.json` templates, capturing skill snapshots, running parallel `claude -p` evaluations across variants (with/without/old-version), aggregating per-iteration benchmarks, optimising descriptions for trigger accuracy, and uploading results to the dashboard.
 
 ```bash
-# From the skill-creator skill directory:
-cd skills/skill-creator
+# From the better-skills skill directory:
+cd skills/better-skills
 pip install -e .
 
 # Now available on PATH:
@@ -57,7 +57,7 @@ better-skills iterate --skill-path <skill-path> --workspace <name>-eval
 better-skills view
 ```
 
-See [`skills/skill-creator/SKILL.md`](./skills/skill-creator/SKILL.md) for the authoring methodology and [`skills/skill-creator/references/`](./skills/skill-creator/references) for the eval / trigger schemas.
+See [`skills/better-skills/SKILL.md`](./skills/better-skills/SKILL.md) for the authoring methodology and [`skills/better-skills/references/`](./skills/better-skills/references) for the eval / trigger schemas.
 
 # Creating a Basic Skill
 
