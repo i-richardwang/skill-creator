@@ -24,7 +24,6 @@ Many skills in this repo are open source (Apache 2.0). We've also included the d
 # Skill Sets
 - [./skills](./skills): Skill examples for Creative & Design, Development & Technical, Enterprise & Communication, and Document Skills
 - [./spec](./spec): The Agent Skills specification
-- [./template](./template): Skill template
 - [./dashboard](./dashboard): Web dashboard that archives skill iteration history (Next.js + PostgreSQL)
 
 # Installation
@@ -61,7 +60,7 @@ See [`skills/better-skills/SKILL.md`](./skills/better-skills/SKILL.md) for the a
 
 # Creating a Basic Skill
 
-Skills are simple to create - just a folder with a `SKILL.md` file containing YAML frontmatter and instructions. You can use the **template-skill** in this repository as a starting point:
+Skills are simple to create - just a folder with a `SKILL.md` file containing YAML frontmatter and instructions:
 
 ```markdown
 ---
