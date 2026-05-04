@@ -520,6 +520,7 @@ def run_grader(
     grader_system_prompt: str,
     timeout: int,
     model: str | None,
+    grader_executor: str = EXECUTOR_CLAUDE,
 ) -> dict:
     """Run one grader subprocess; update timing.json + grading.json with grader timings."""
     transcript = (run_dir / "transcript.jsonl").resolve()
@@ -531,7 +532,7 @@ def run_grader(
     expectations_block = (
         "\n".join(f"- {e}" for e in expectations) if expectations else "(none)"
     )
-    prompt = (
+    user_prompt = (
         "Grade this run against the expectations below.\n"
         "\n"
         f"Expectations:\n{expectations_block}\n"
@@ -540,19 +541,35 @@ def run_grader(
         f"outputs_dir: {outputs_dir}\n"
         "\n"
         f"Write grading.json to: {grading_path}\n"
-        "Follow your system-prompt instructions.\n"
     )
 
     start_iso, start_wall = _now_iso(), time.time()
-    exit_code, timed_out = run_claude_p(
-        prompt=prompt,
-        cwd=run_dir,
-        transcript_path=grader_transcript,
-        stderr_path=grader_stderr,
-        timeout=timeout,
-        model=model,
-        append_system_prompt=grader_system_prompt,
-    )
+    if grader_executor == EXECUTOR_OPENCODE:
+        # OpenCode has no --append-system-prompt equivalent on `opencode run`;
+        # prepend the rubric into the user prompt instead. Tool guidance still
+        # comes from OpenCode's default agent.
+        merged_prompt = (
+            f"{grader_system_prompt}\n\n---\n\n{user_prompt}"
+            "Follow the instructions above.\n"
+        )
+        exit_code, timed_out = run_opencode(
+            prompt=merged_prompt,
+            cwd=run_dir,
+            transcript_path=grader_transcript,
+            stderr_path=grader_stderr,
+            timeout=timeout,
+            model=model,
+        )
+    else:
+        exit_code, timed_out = run_claude_p(
+            prompt=user_prompt + "Follow your system-prompt instructions.\n",
+            cwd=run_dir,
+            transcript_path=grader_transcript,
+            stderr_path=grader_stderr,
+            timeout=timeout,
+            model=model,
+            append_system_prompt=grader_system_prompt,
+        )
     end_wall, end_iso = time.time(), _now_iso()
     grader_duration = end_wall - start_wall
 
@@ -583,12 +600,20 @@ def run_grader(
             pass
 
     if exit_code == 0 and not timed_out and grading_path.exists():
-        _write_run_status(run_dir, STATUS_GRADED, grader_completed_at=end_iso)
+        _write_run_status(
+            run_dir,
+            STATUS_GRADED,
+            grader_completed_at=end_iso,
+            grader_executor=grader_executor,
+            grader_model=model,
+        )
     else:
         _write_run_status(
             run_dir,
             STATUS_FAILED,
             grader_completed_at=end_iso,
+            grader_executor=grader_executor,
+            grader_model=model,
             grader_exit_code=exit_code,
             grader_timed_out=timed_out,
         )
@@ -844,6 +869,7 @@ def run_phase_grader(
     timeout: int,
     model: str | None,
     resume: bool = False,
+    grader_executor: str = EXECUTOR_CLAUDE,
 ) -> list[dict]:
     """Run grader for each executor result. Only grades runs whose executor produced
     a usable transcript (failed executors are skipped — there's nothing to grade).
@@ -903,6 +929,7 @@ def run_phase_grader(
                 grader_system_prompt,
                 timeout,
                 model,
+                grader_executor,
             ): r for r in todo
         }
         done = 0
@@ -1085,11 +1112,18 @@ def run_all(
         if not grader_md_path.exists():
             raise FileNotFoundError(f"grader.md not found at {grader_md_path}")
         grader_system_prompt = grader_md_path.read_text()
-        # The grader runs on Claude regardless of executor. default_model is
-        # for the executor, so it's only safe to share with the grader when
-        # executor is also Claude — under executor=opencode the model id is in
-        # provider/model form which `claude -p` rejects.
-        grader_model = model if executor == EXECUTOR_CLAUDE else None
+        grader_executor = config.grader_executor
+        # Resolve grader model: explicit grader_model wins; otherwise reuse
+        # default_model only when grader_executor matches executor (the model
+        # id is shaped for that runtime). Cross-runtime would pass a wrong-
+        # format id (e.g. claude-only id to opencode, or provider/model to
+        # claude -p), so fall back to None and let the CLI use its default.
+        if config.grader_model is not None:
+            grader_model = config.grader_model
+        elif grader_executor == executor:
+            grader_model = model
+        else:
+            grader_model = None
         grader_results = run_phase_grader(
             executor_results=executor_results,
             grader_system_prompt=grader_system_prompt,
@@ -1097,6 +1131,7 @@ def run_all(
             timeout=default_timeout,
             model=grader_model,
             resume=resume,
+            grader_executor=grader_executor,
         )
 
     # Final manifest refresh: pulls in everything just written to disk.

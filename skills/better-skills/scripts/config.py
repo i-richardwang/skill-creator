@@ -186,8 +186,10 @@ class EvalsConfig(BaseModel):
 
     version: int = Field(CONFIG_VERSION, description="Schema version. Migration script bumps this when format changes.")
     skill_name: str | None = Field(None, description="Skill identifier for manifest + dashboard. Defaults to the skill dir name.")
-    default_model: str | None = Field(None, description="Model id for the executor subprocess. Use `provider/model` form (e.g. `anthropic/claude-opus-4-7`) when executor=opencode. When executor=claude this same id is also used for the grader.")
-    executor: Literal["claude", "opencode"] = Field("claude", description="Agent runtime for the executor subprocess. The grader runs on Claude with its CLI default model when executor=opencode.")
+    default_model: str | None = Field(None, description="Model id for the executor subprocess. Use `provider/model` form (e.g. `anthropic/claude-opus-4-7`) when executor=opencode. The grader uses this same id only when grader_executor matches executor and grader_model is unset.")
+    executor: Literal["claude", "opencode"] = Field("claude", description="Agent runtime for the executor subprocess.")
+    grader_executor: Literal["claude", "opencode"] = Field("claude", description="Agent runtime for the grader subprocess. Independent of `executor` — pin this once per skill so grading stays consistent across iterations.")
+    grader_model: str | None = Field(None, description="Model id for the grader subprocess. Use `provider/model` form when grader_executor=opencode. When unset, falls back to `default_model` if grader_executor matches executor, otherwise the chosen CLI's own default.")
     variants: list[VariantConfig] = Field(..., min_length=1)
     defaults: FunctionalDefaults
     cases: list[CaseConfig] = Field(..., min_length=1)

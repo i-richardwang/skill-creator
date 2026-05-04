@@ -16,7 +16,9 @@ Use `python -m scripts.cli init <skill-path>` to scaffold starter templates.
   "version": 2,
   "skill_name": "my-skill",                    // optional; defaults to skill dir name
   "default_model": "claude-opus-4-7",          // executor model id; use "provider/model" form when executor=opencode
-  "executor": "claude",                        // "claude" or "opencode"; grader always runs on Claude
+  "executor": "claude",                        // "claude" or "opencode"
+  "grader_executor": "claude",                 // "claude" or "opencode"; defaults to "claude"
+  "grader_model": null,                        // grader model id; null = inherit default_model when grader_executor==executor, else CLI default
 
   "variants": [                                // each declared variant becomes
     {                                          // a directory under iteration-N/eval-X/
@@ -66,6 +68,27 @@ Use `python -m scripts.cli init <skill-path>` to scaffold starter templates.
   ]
 }
 ```
+
+### Executor and grader runtimes
+
+`executor` and `grader_executor` are independent. Each accepts `"claude"` or
+`"opencode"`. Default is `"claude"` for both.
+
+The grader is the measurement instrument — pin it once per skill so results
+stay comparable across iterations of the same `evals.json`. Don't change
+`grader_executor` or `grader_model` partway through a measurement campaign.
+
+| `grader_executor` | How the rubric is injected |
+|---|---|
+| `claude` | `claude -p --append-system-prompt <agents/grader.md>` — rubric augments Claude Code's default system prompt, tool guidance is preserved |
+| `opencode` | Rubric is prepended to the user prompt (`opencode run` has no system-prompt flag); OpenCode's default agent provides tool guidance |
+
+`grader_model` resolution when the field is `null`:
+- if `grader_executor == executor`, the runner reuses `default_model`
+- otherwise the chosen CLI's own default model is used
+
+Each run's `run_status.json` records the actual `grader_executor` and
+`grader_model` it ran with.
 
 ### Mount types
 
