@@ -48,7 +48,7 @@ STATUS_FAILED = "failed"
 def _env(overrides: dict | None = None) -> dict:
     # Drop CLAUDECODE so `claude -p` can nest inside a Claude Code session.
     # Same pattern as run_eval.py. `overrides` win over inherited values — used
-    # to inject per-worker values from evals.json's env_pool.
+    # to inject per-worker pool slot values + per-case static env.
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
     if overrides:
         env.update(overrides)
@@ -56,7 +56,7 @@ def _env(overrides: dict | None = None) -> dict:
 
 
 def _build_env_pool_queue(env_pool: dict[str, list[str]]) -> queue.Queue | None:
-    """Turn the declared env_pool into a queue of per-worker env dicts.
+    """Turn the declared per_run_setup.env pool into a queue of per-worker env dicts.
 
     Same index across keys binds to the same worker — config validation already
     enforces equal-length lists. Worker threads `get()` a dict on entry and
@@ -336,11 +336,11 @@ def _run_setup_script(
     env_overrides: dict | None,
     timeout: int,
 ) -> tuple[int, bool]:
-    """Execute the per-run setup script before the executor subprocess.
+    """Execute `per_run_setup.script` before the executor subprocess.
 
-    The script inherits the run's env (including any env_pool slot the worker
-    is currently holding), so it can target the same isolated state the
-    executor will see. stdout/stderr go to setup_*.log inside the run dir for
+    The script inherits the run's env (per_run_setup.env pool slot + the
+    case's static env), so it can target the same isolated state the executor
+    will see. stdout/stderr go to setup_*.log inside the run dir for
     debuggability; non-zero exit is the runner's signal that the run should
     not proceed.
     """
@@ -422,8 +422,14 @@ def run_executor(
     timeout: int,
     model: str | None,
     env_overrides: dict | None = None,
+    applied_env_keys: list[str] | None = None,
 ) -> dict:
-    """Run one executor subprocess; write timing.json; return result dict."""
+    """Run one executor subprocess; write timing.json; return result dict.
+
+    `applied_env_keys` is recorded in run_status.json so post-hoc debugging can
+    answer "which env vars did the runner actually inject?" without leaking
+    values (which may contain secrets).
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "outputs").mkdir(exist_ok=True)
     transcript = run_dir / "transcript.jsonl"
@@ -452,8 +458,12 @@ def run_executor(
     }
     (run_dir / "timing.json").write_text(json.dumps(timing, indent=2))
 
+    extra_status: dict = {}
+    if applied_env_keys:
+        extra_status["applied_env_keys"] = applied_env_keys
+
     if exit_code == 0 and not timed_out:
-        _write_run_status(run_dir, STATUS_EXECUTED, executor_completed_at=end_iso)
+        _write_run_status(run_dir, STATUS_EXECUTED, executor_completed_at=end_iso, **extra_status)
     else:
         _write_run_status(
             run_dir,
@@ -461,6 +471,7 @@ def run_executor(
             executor_completed_at=end_iso,
             executor_exit_code=exit_code,
             executor_timed_out=timed_out,
+            **extra_status,
         )
 
     return {
@@ -623,6 +634,7 @@ def plan_runs(
             "files": list(case.files),
             "expectations": expectations,
             "timeout": case.timeout_s or default_timeout,
+            "case_env": dict(case.env),
         }
 
         for k in range(1, runs_per_config + 1):
@@ -641,34 +653,51 @@ def plan_runs(
 def _run_one(
     r: dict,
     model: str | None,
-    pre_run_script: Path | None,
+    setup_script: Path | None,
     env_pool_q: queue.Queue | None,
 ) -> dict:
-    """One worker's full per-run lifecycle: acquire env slot, run pre_run_script
-    (if configured), run the executor, release the slot.
+    """One worker's full per-run lifecycle: acquire pool slot, merge with this
+    case's static env, run the setup script (if configured), run the executor,
+    release the slot.
 
-    Both extension hooks are independent: env_pool_q can be None even when
-    pre_run_script is set, and vice versa. Slot release happens in `finally`
-    so a crash mid-run never leaks a slot.
+    Layered env construction (later wins on key conflicts):
+      pool_slot (from per_run_setup.env)  →  case.env (per-case static)
+
+    All three primitives are independent: env_pool_q can be None even when
+    setup_script or case.env are set, and vice versa. Slot release happens in
+    `finally` so a crash mid-run never leaks a slot.
     """
-    env_overrides: dict | None = env_pool_q.get() if env_pool_q is not None else None
+    pool_slot: dict | None = env_pool_q.get() if env_pool_q is not None else None
+    case_env: dict = r.get("case_env") or {}
     try:
         run_dir: Path = r["run_dir"]
 
-        if pre_run_script is not None:
+        # Merge pool slot + case.env. case.env wins on key conflicts (the case
+        # is closer to the test's intent than a generic isolation pool slot).
+        env_overrides: dict | None = None
+        if pool_slot or case_env:
+            env_overrides = {}
+            if pool_slot:
+                env_overrides.update(pool_slot)
+            if case_env:
+                env_overrides.update(case_env)
+        applied_env_keys = sorted(env_overrides.keys()) if env_overrides else []
+
+        if setup_script is not None:
             setup_exit, setup_timed_out = _run_setup_script(
-                script_path=pre_run_script,
+                script_path=setup_script,
                 run_dir=run_dir,
                 env_overrides=env_overrides,
                 timeout=r["timeout"],
             )
             if setup_exit != 0 or setup_timed_out:
-                _write_run_status(
-                    run_dir,
-                    STATUS_FAILED,
-                    setup_exit_code=setup_exit,
-                    setup_timed_out=setup_timed_out,
-                )
+                fail_extra: dict = {
+                    "setup_exit_code": setup_exit,
+                    "setup_timed_out": setup_timed_out,
+                }
+                if applied_env_keys:
+                    fail_extra["applied_env_keys"] = applied_env_keys
+                _write_run_status(run_dir, STATUS_FAILED, **fail_extra)
                 return {
                     "exit_code": -1,
                     "timed_out": False,
@@ -686,10 +715,11 @@ def _run_one(
             timeout=r["timeout"],
             model=model,
             env_overrides=env_overrides,
+            applied_env_keys=applied_env_keys,
         )
     finally:
-        if env_pool_q is not None and env_overrides is not None:
-            env_pool_q.put(env_overrides)
+        if env_pool_q is not None and pool_slot is not None:
+            env_pool_q.put(pool_slot)
 
 
 def run_phase_executor(
@@ -698,16 +728,17 @@ def run_phase_executor(
     model: str | None,
     resume: bool = False,
     env_pool: dict[str, list[str]] | None = None,
-    pre_run_script: Path | None = None,
+    setup_script: Path | None = None,
 ) -> list[dict]:
     """Run executor for all `runs`. With resume=True, skip runs whose transcript
     already contains a final result event — that's an externally-verifiable signal
     of executor success, independent of any later grader failure.
 
-    `env_pool` and `pre_run_script` are orthogonal extension hooks (either, both,
-    or neither). When `env_pool` is set, each worker thread holds one slot's
-    worth of env values for the duration of a run. When `pre_run_script` is set,
-    it runs before the executor with the same env the executor will see.
+    `env_pool` and `setup_script` (the runtime forms of `per_run_setup.env` and
+    `per_run_setup.script`) are independent — pass either, both, or neither.
+    When `env_pool` is set, each worker thread holds one slot's worth of values
+    for the duration of a run. When `setup_script` is set, it runs before the
+    executor with the same env the executor will see.
     """
     results = []
     todo = []
@@ -739,7 +770,7 @@ def run_phase_executor(
                 _run_one,
                 r,
                 model,
-                pre_run_script,
+                setup_script,
                 env_pool_q,
             ): r for r in todo
         }
@@ -924,18 +955,22 @@ def run_all(
     elif snapshot_path is not None:
         snapshot_path = Path(snapshot_path).resolve()
 
-    pre_run_script_path: Path | None = None
-    if config.defaults.pre_run_script:
-        pre_run_script_path = (skill_path / config.defaults.pre_run_script).resolve()
-        if not pre_run_script_path.exists():
+    per_run_setup = config.defaults.per_run_setup
+    setup_script_path: Path | None = None
+    if per_run_setup and per_run_setup.script:
+        setup_script_path = (skill_path / per_run_setup.script).resolve()
+        if not setup_script_path.exists():
             raise FileNotFoundError(
-                f"pre_run_script not found: {pre_run_script_path} "
-                f"(declared in evals.json defaults.pre_run_script)"
+                f"per_run_setup.script not found: {setup_script_path} "
+                f"(declared in evals.json defaults.per_run_setup.script)"
             )
-        if not os.access(pre_run_script_path, os.X_OK):
+        if not os.access(setup_script_path, os.X_OK):
             raise PermissionError(
-                f"pre_run_script not executable: {pre_run_script_path} (chmod +x?)"
+                f"per_run_setup.script not executable: {setup_script_path} (chmod +x?)"
             )
+    env_pool_values: dict[str, list[str]] = (
+        per_run_setup.env if per_run_setup else {}
+    )
 
     runs = plan_runs(
         config=config,
@@ -981,8 +1016,8 @@ def run_all(
             num_workers,
             model,
             resume=resume,
-            env_pool=config.defaults.env_pool,
-            pre_run_script=pre_run_script_path,
+            env_pool=env_pool_values,
+            setup_script=setup_script_path,
         )
         # Refresh + rewrite manifest between phases so a viewer reading the file
         # sees real status before grading even starts.

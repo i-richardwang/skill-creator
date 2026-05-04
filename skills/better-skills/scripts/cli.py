@@ -55,7 +55,7 @@ from .config import (
 
 
 def _evals_template(skill_name: str) -> dict:
-    return EvalsConfig(
+    template = EvalsConfig(
         skill_name=skill_name,
         variants=[
             VariantConfig(name="with_skill", mount="self"),
@@ -74,6 +74,15 @@ def _evals_template(skill_name: str) -> dict:
             )
         ],
     ).model_dump(exclude_none=True)
+    # Drop empty collections from each case so the scaffold stays minimal —
+    # users can read the schema doc to discover optional fields like `files`,
+    # `env`, `prompt_file`. Defaults block keeps its values (num_workers etc.)
+    # since those are pedagogical defaults, not empty placeholders.
+    template["cases"] = [
+        {k: v for k, v in c.items() if v not in ({}, [])}
+        for c in template["cases"]
+    ]
+    return template
 
 
 def _triggers_template(skill_name: str) -> dict:
@@ -107,6 +116,16 @@ def cmd_init(args: argparse.Namespace) -> dict:
     else:
         triggers_path.write_text(json.dumps(_triggers_template(skill_path.name), indent=2) + "\n")
         created.append(str(triggers_path))
+
+    if created:
+        print(
+            "[init] If your skill touches external mutable state "
+            "(database, browser, sandbox, webhook receiver, port), "
+            "see references/evals-schema.md → \"Advanced: per_run_setup\" "
+            "for symptom-led recipes. Most skills don't need it.",
+            file=sys.stderr,
+            flush=True,
+        )
 
     return {"status": "ok", "created": created, "skipped": skipped}
 

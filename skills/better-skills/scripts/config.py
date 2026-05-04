@@ -61,6 +61,63 @@ class VariantConfig(BaseModel):
         return self
 
 
+class PerRunSetup(BaseModel):
+    """Skill-level hooks for tests that need isolated external state.
+
+    Two independent sub-fields (use either, both, or neither):
+
+    * `env`: per-worker environment-variable pool. Each key maps to a list of
+      values; one slot is checked out per running worker and returned when the
+      run finishes. Use for resources where two parallel runs would clobber
+      each other (databases, sandboxes, scratch dirs, ports, per-key API
+      tokens). Same index across keys binds to the same worker, so cross-key
+      consistency is guaranteed.
+
+    * `script`: path (relative to skill dir) to an executable run before the
+      executor subprocess. Inherits the run's full environment (including the
+      env pool slot, if any). Non-zero exit or timeout marks the run FAILED
+      and skips the executor — use for state resets, fixture seeding, etc.
+
+    Most skills don't need this block. See references/evals-schema.md
+    ("Per-run setup") for symptoms and copy-paste recipes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    env: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-worker environment variable pool. Each key → list of values, "
+            "one slot per worker thread. List length must be >= num_workers; "
+            "multiple keys must be equal-length so same index binds to same worker."
+        ),
+    )
+    script: str | None = Field(
+        None,
+        description=(
+            "Path (relative to skill dir) to an executable invoked before each "
+            "executor subprocess. Receives the run's full env (shell + pool slot "
+            "+ case.env). Non-zero exit or timeout marks the run FAILED."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_env_lengths(self) -> "PerRunSetup":
+        if not self.env:
+            return self
+        lengths = {k: len(v) for k, v in self.env.items()}
+        for k, n in lengths.items():
+            if n == 0:
+                raise ValueError(f"per_run_setup.env['{k}']: must have at least one value")
+        unique_lengths = set(lengths.values())
+        if len(unique_lengths) > 1:
+            raise ValueError(
+                f"per_run_setup.env: all keys must have the same number of values "
+                f"(got {lengths}); same index across keys binds to the same worker."
+            )
+        return self
+
+
 class FunctionalDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -69,50 +126,25 @@ class FunctionalDefaults(BaseModel):
     runs_per_variant: int = Field(1, ge=1, description="Replicate each (case × variant) N times for variance.")
     timeout_s: int = Field(600, ge=1, description="Default per-run timeout in seconds.")
     num_workers: int = Field(4, ge=1, description="Parallel subprocess workers.")
-    env_pool: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description=(
-            "Per-worker environment variable values. Each key maps to a list of "
-            "values; the runner gives every worker thread one value per key, "
-            "indexed positionally — same index across keys binds to the same "
-            "worker. Use this whenever parallel runs need isolated state that "
-            "can't safely be shared (separate sandbox URLs, scratch dirs, API "
-            "keys, ports, ...). Each list must have length >= num_workers; if "
-            "multiple keys are declared they must be equal length."
-        ),
-    )
-    pre_run_script: str | None = Field(
+    per_run_setup: PerRunSetup | None = Field(
         None,
         description=(
-            "Path (relative to skill dir) to an executable invoked before each "
-            "executor subprocess. Inherits the run's full environment, including "
-            "any value the worker drew from env_pool. Non-zero exit marks the run "
-            "FAILED and skips the executor — use it for any per-run initialization "
-            "the test depends on (resetting state, seeding fixtures, warming a "
-            "service, etc.). Independent of env_pool: works with or without it."
+            "Skill-level isolation/setup for parallel tests with external mutable "
+            "state. Most skills don't need this — leave unset. See "
+            "references/evals-schema.md#per-run-setup for symptoms and recipes."
         ),
     )
 
     @model_validator(mode="after")
-    def _check_env_pool(self) -> "FunctionalDefaults":
-        if not self.env_pool:
-            return self
-        lengths = {k: len(v) for k, v in self.env_pool.items()}
-        for k, n in lengths.items():
-            if n == 0:
-                raise ValueError(f"env_pool['{k}']: must have at least one value")
-        unique_lengths = set(lengths.values())
-        if len(unique_lengths) > 1:
-            raise ValueError(
-                f"env_pool: all keys must have the same number of values "
-                f"(got {lengths}); same index across keys binds to the same worker."
-            )
-        pool_size = next(iter(unique_lengths))
-        if pool_size < self.num_workers:
-            raise ValueError(
-                f"env_pool: pool size {pool_size} < num_workers {self.num_workers}; "
-                f"declare at least num_workers values per key, or lower num_workers."
-            )
+    def _check_pool_vs_workers(self) -> "FunctionalDefaults":
+        if self.per_run_setup and self.per_run_setup.env:
+            pool_size = len(next(iter(self.per_run_setup.env.values())))
+            if pool_size < self.num_workers:
+                raise ValueError(
+                    f"per_run_setup.env: pool size {pool_size} < num_workers "
+                    f"{self.num_workers}; declare at least num_workers values per "
+                    f"key, or lower num_workers."
+                )
         return self
 
 
@@ -126,6 +158,17 @@ class CaseConfig(BaseModel):
     files: list[str] = Field(default_factory=list, description="Input file paths mentioned in the executor prompt. Files must already exist on disk; this script does not materialize them.")
     expectations: list[str] = Field(default_factory=list, description="Assertion strings the grader checks against the transcript + outputs.")
     timeout_s: int | None = Field(None, ge=1, description="Override defaults.timeout_s for this case.")
+    env: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Static environment variables specific to this case (case-level "
+            "identity, e.g. {'FEATURE': 'A'} for one case, {'FEATURE': 'B'} "
+            "for another). Layered on top of the shell env and any "
+            "per_run_setup.env pool slot — case.env wins on key conflicts. "
+            "These values are static across replicates and variants of the "
+            "case; for parallel-run isolation use per_run_setup.env instead."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_prompt(self) -> "CaseConfig":

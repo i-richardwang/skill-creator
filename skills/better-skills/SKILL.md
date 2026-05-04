@@ -228,7 +228,7 @@ Run it **from the better-skills directory** (so `python -m scripts.*` resolves).
 
 **Environment inheritance.** Each `claude -p` subprocess inherits the parent shell's environment, MCP servers, settings, and Claude Code auth — the only variable the script strips is `CLAUDECODE` (which would otherwise block nesting). Override globally via exported env vars before launching (e.g. `ANTHROPIC_API_KEY=... ANTHROPIC_BASE_URL=... python -m scripts.cli iterate ...`).
 
-For per-run isolation — when parallel runs need their own DB / sandbox / port / API key, or need a setup script to run first — declare `env_pool` and/or `pre_run_script` in `evals.json`'s `defaults`. They're independent hooks: the first hands each worker thread a unique slot of env values, the second runs an arbitrary executable before each executor with that env. See `references/evals-schema.md` ("Per-run isolation") for the full schema and pairing patterns.
+For case-specific environment variables (e.g., one case tests `FEATURE=A`, another tests `FEATURE=B`), set `env: {KEY: VALUE}` on the case in `evals.json`. For parallel-test isolation when the skill touches external mutable state (database, browser profile, webhook receiver, port, ...), see the advanced "Per-run setup" section in `references/evals-schema.md` — it's symptom-led with copy-paste recipes.
 
 **Dashboard upload (silent).** When `SKILL_DASHBOARD_URL` and `SKILL_DASHBOARD_TOKEN` are set in the env, the aggregation step also POSTs the iteration to the dashboard. This is fail-soft — a network error never blocks the workflow but will print `[dashboard] upload failed: …` on stderr. Set `SKILL_DASHBOARD_DISABLED=1` to opt out.
 
