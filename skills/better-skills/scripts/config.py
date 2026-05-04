@@ -69,6 +69,51 @@ class FunctionalDefaults(BaseModel):
     runs_per_variant: int = Field(1, ge=1, description="Replicate each (case × variant) N times for variance.")
     timeout_s: int = Field(600, ge=1, description="Default per-run timeout in seconds.")
     num_workers: int = Field(4, ge=1, description="Parallel subprocess workers.")
+    env_pool: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-worker environment variable values. Each key maps to a list of "
+            "values; the runner gives every worker thread one value per key, "
+            "indexed positionally — same index across keys binds to the same "
+            "worker. Use this whenever parallel runs need isolated state that "
+            "can't safely be shared (separate sandbox URLs, scratch dirs, API "
+            "keys, ports, ...). Each list must have length >= num_workers; if "
+            "multiple keys are declared they must be equal length."
+        ),
+    )
+    pre_run_script: str | None = Field(
+        None,
+        description=(
+            "Path (relative to skill dir) to an executable invoked before each "
+            "executor subprocess. Inherits the run's full environment, including "
+            "any value the worker drew from env_pool. Non-zero exit marks the run "
+            "FAILED and skips the executor — use it for any per-run initialization "
+            "the test depends on (resetting state, seeding fixtures, warming a "
+            "service, etc.). Independent of env_pool: works with or without it."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_env_pool(self) -> "FunctionalDefaults":
+        if not self.env_pool:
+            return self
+        lengths = {k: len(v) for k, v in self.env_pool.items()}
+        for k, n in lengths.items():
+            if n == 0:
+                raise ValueError(f"env_pool['{k}']: must have at least one value")
+        unique_lengths = set(lengths.values())
+        if len(unique_lengths) > 1:
+            raise ValueError(
+                f"env_pool: all keys must have the same number of values "
+                f"(got {lengths}); same index across keys binds to the same worker."
+            )
+        pool_size = next(iter(unique_lengths))
+        if pool_size < self.num_workers:
+            raise ValueError(
+                f"env_pool: pool size {pool_size} < num_workers {self.num_workers}; "
+                f"declare at least num_workers values per key, or lower num_workers."
+            )
+        return self
 
 
 class CaseConfig(BaseModel):

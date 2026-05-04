@@ -42,7 +42,9 @@ Use `python -m scripts.cli init <skill-path>` to scaffold starter templates.
     "baseline_variant": "without_skill",       // null = no delta
     "runs_per_variant": 1,                     // replicate count per case×variant
     "timeout_s": 600,                          // per-run subprocess timeout
-    "num_workers": 4                           // parallel workers
+    "num_workers": 4,                          // parallel workers
+    "env_pool": {},                            // optional, see "Per-run isolation" below
+    "pre_run_script": null                     // optional, see "Per-run isolation" below
   },
 
   "cases": [
@@ -82,6 +84,10 @@ Use `python -m scripts.cli init <skill-path>` to scaffold starter templates.
 - Case IDs must be unique.
 - `mount: path` requires the `path` field; other mounts must omit it.
 - `runs_per_variant`, `timeout_s`, `num_workers` must be ≥ 1.
+- `env_pool` (if set): every list must be non-empty, all keys equal length,
+  and each list ≥ `num_workers`.
+- `pre_run_script` (if set): file must exist under the skill dir and be
+  executable. Validated when the runner starts, not when the config loads.
 
 Bad configs fail with field-level error messages pointing at the JSON path:
 
@@ -90,6 +96,93 @@ config validation failed (2 error(s)):
   - defaults.primary_variant: 'with_kill' not in variants ['with_skill', 'without_skill']
   - cases.1: must set prompt or prompt_file
 ```
+
+### Per-run isolation: `env_pool` and `pre_run_script`
+
+Two independent extension hooks for tests where a run needs its own slice of
+external state. They're orthogonal — use either, both, or neither.
+
+#### `env_pool` — per-worker environment values
+
+Some skills exercise external resources (databases, sandboxes, scratch
+directories, ports, third-party API keys with per-key rate limits) where two
+runs sharing the same value would clobber each other. `env_pool` declares a
+list of values for each environment variable, and the runner gives each worker
+thread one slot's worth for the duration of a run:
+
+```jsonc
+"defaults": {
+  "num_workers": 4,
+  "env_pool": {
+    "DATABASE_URL": [
+      "postgres://localhost/test_db_1",
+      "postgres://localhost/test_db_2",
+      "postgres://localhost/test_db_3",
+      "postgres://localhost/test_db_4"
+    ],
+    "SCRATCH_DIR": [
+      "/tmp/eval-1", "/tmp/eval-2", "/tmp/eval-3", "/tmp/eval-4"
+    ]
+  }
+}
+```
+
+Mechanics:
+
+- Pool size must be `>= num_workers` per key — runs never share a slot.
+  Validation rejects smaller pools rather than silently looping.
+- Multiple keys must have **equal-length** lists. Same index across keys binds
+  to the same worker — `DATABASE_URL[2]` and `SCRATCH_DIR[2]` are always held
+  by the same in-flight run, so you can rely on cross-variable consistency.
+- Slot lifetime is one run: acquired before `pre_run_script` (if any),
+  released after the executor returns. If the executor crashes the slot still
+  goes back to the pool.
+- The values are merged into the executor's environment, overriding any
+  inherited value with the same name.
+
+Use it whenever parallel runs each need their own copy of *some* resource.
+DBs are one example; per-worker sandbox dirs, port numbers, or API tokens
+fit the same shape.
+
+#### `pre_run_script` — per-run setup hook
+
+```jsonc
+"defaults": {
+  "pre_run_script": "scripts/reset_db.sh"
+}
+```
+
+The path is relative to the skill directory and must be executable. Before
+each executor subprocess, the runner invokes this script with:
+
+- **cwd** = the run's directory (`iteration-N/eval-X/<variant>/run-K/`)
+- **env** = the same env the executor will see (inherited shell env, plus any
+  `env_pool` slot values the worker is currently holding)
+- **stdout/stderr** captured to `setup_stdout.log` / `setup_stderr.log`
+  inside the run dir
+
+A non-zero exit (or timeout) marks the run `failed`, surfaces
+`setup_exit_code` / `setup_timed_out` in `run_status.json` and the manifest,
+and **skips the executor** — there's no point running the test if its
+prerequisites didn't establish.
+
+Independent of `env_pool`: it's just "run this script first". Use it for any
+per-run preparation: clearing state from the previous occupant of the slot,
+seeding fixtures, warming a cache, registering a tenant, etc.
+
+#### Pairing them
+
+The common pattern is `env_pool` for resource isolation plus `pre_run_script`
+to bring the resource to a clean starting state. Worth knowing:
+
+- The script can read its own env to find which slot it's in
+  (e.g. `psql "$DATABASE_URL" -c 'TRUNCATE TABLE …'`).
+- The runner does not verify the script actually cleaned state — its exit
+  code is taken as truth. If your script can fail silently, add a sanity
+  check at its tail.
+- One pre-allocated pool of N reusable resources + a clear-state script
+  beats spinning up a fresh resource per run, especially when setup is
+  cheaper than provisioning.
 
 ### prompt vs prompt_file
 

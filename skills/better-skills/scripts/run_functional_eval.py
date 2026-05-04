@@ -17,6 +17,7 @@ Claude Code session.
 
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
@@ -44,10 +45,31 @@ STATUS_GRADED = "graded"
 STATUS_FAILED = "failed"
 
 
-def _env() -> dict:
+def _env(overrides: dict | None = None) -> dict:
     # Drop CLAUDECODE so `claude -p` can nest inside a Claude Code session.
-    # Same pattern as run_eval.py.
-    return {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    # Same pattern as run_eval.py. `overrides` win over inherited values — used
+    # to inject per-worker values from evals.json's env_pool.
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    if overrides:
+        env.update(overrides)
+    return env
+
+
+def _build_env_pool_queue(env_pool: dict[str, list[str]]) -> queue.Queue | None:
+    """Turn the declared env_pool into a queue of per-worker env dicts.
+
+    Same index across keys binds to the same worker — config validation already
+    enforces equal-length lists. Worker threads `get()` a dict on entry and
+    `put()` it back when done, so the same DB / sandbox / port stays pinned to
+    one in-flight run at a time.
+    """
+    if not env_pool:
+        return None
+    pool_size = len(next(iter(env_pool.values())))
+    q: queue.Queue = queue.Queue()
+    for i in range(pool_size):
+        q.put({k: vals[i] for k, vals in env_pool.items()})
+    return q
 
 
 def _now_iso() -> str:
@@ -239,6 +261,7 @@ def _refresh_manifest_runs(iteration_dir: Path, manifest: dict) -> dict:
         for fail_field in (
             "executor_exit_code", "executor_timed_out",
             "grader_exit_code", "grader_timed_out",
+            "setup_exit_code", "setup_timed_out",
         ):
             if fail_field in status_data:
                 entry[fail_field] = status_data[fail_field]
@@ -275,6 +298,7 @@ def run_claude_p(
     timeout: int,
     model: str | None = None,
     append_system_prompt: str | None = None,
+    env_overrides: dict | None = None,
 ) -> tuple[int, bool]:
     """Spawn a claude -p subprocess. Returns (exit_code, timed_out)."""
     cmd = [
@@ -298,12 +322,47 @@ def run_claude_p(
                 stderr=efile,
                 text=True,
                 cwd=str(cwd),
-                env=_env(),
+                env=_env(env_overrides),
                 timeout=timeout,
             )
             return result.returncode, False
         except subprocess.TimeoutExpired:
             return -1, True
+
+
+def _run_setup_script(
+    script_path: Path,
+    run_dir: Path,
+    env_overrides: dict | None,
+    timeout: int,
+) -> tuple[int, bool]:
+    """Execute the per-run setup script before the executor subprocess.
+
+    The script inherits the run's env (including any env_pool slot the worker
+    is currently holding), so it can target the same isolated state the
+    executor will see. stdout/stderr go to setup_*.log inside the run dir for
+    debuggability; non-zero exit is the runner's signal that the run should
+    not proceed.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+    setup_stdout = run_dir / "setup_stdout.log"
+    setup_stderr = run_dir / "setup_stderr.log"
+    with open(setup_stdout, "w") as out, open(setup_stderr, "w") as err:
+        try:
+            result = subprocess.run(
+                [str(script_path)],
+                stdout=out,
+                stderr=err,
+                cwd=str(run_dir),
+                env=_env(env_overrides),
+                timeout=timeout,
+            )
+            return result.returncode, False
+        except subprocess.TimeoutExpired:
+            return -1, True
+        except (OSError, PermissionError) as e:
+            err.write(f"\n[runner] failed to invoke setup script: {e}\n")
+            return -1, False
 
 
 def parse_result_event(transcript_path: Path) -> dict:
@@ -362,6 +421,7 @@ def run_executor(
     files: list[str],
     timeout: int,
     model: str | None,
+    env_overrides: dict | None = None,
 ) -> dict:
     """Run one executor subprocess; write timing.json; return result dict."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -379,6 +439,7 @@ def run_executor(
         stderr_path=stderr,
         timeout=timeout,
         model=model,
+        env_overrides=env_overrides,
     )
     end_wall, end_iso = time.time(), _now_iso()
 
@@ -577,15 +638,77 @@ def plan_runs(
     return runs
 
 
+def _run_one(
+    r: dict,
+    model: str | None,
+    pre_run_script: Path | None,
+    env_pool_q: queue.Queue | None,
+) -> dict:
+    """One worker's full per-run lifecycle: acquire env slot, run pre_run_script
+    (if configured), run the executor, release the slot.
+
+    Both extension hooks are independent: env_pool_q can be None even when
+    pre_run_script is set, and vice versa. Slot release happens in `finally`
+    so a crash mid-run never leaks a slot.
+    """
+    env_overrides: dict | None = env_pool_q.get() if env_pool_q is not None else None
+    try:
+        run_dir: Path = r["run_dir"]
+
+        if pre_run_script is not None:
+            setup_exit, setup_timed_out = _run_setup_script(
+                script_path=pre_run_script,
+                run_dir=run_dir,
+                env_overrides=env_overrides,
+                timeout=r["timeout"],
+            )
+            if setup_exit != 0 or setup_timed_out:
+                _write_run_status(
+                    run_dir,
+                    STATUS_FAILED,
+                    setup_exit_code=setup_exit,
+                    setup_timed_out=setup_timed_out,
+                )
+                return {
+                    "exit_code": -1,
+                    "timed_out": False,
+                    "timing": {},
+                    "setup_failed": True,
+                    "setup_exit_code": setup_exit,
+                    "setup_timed_out": setup_timed_out,
+                }
+
+        return run_executor(
+            run_dir=run_dir,
+            skill_path=r["skill_path"],
+            prompt=r["prompt"],
+            files=r["files"],
+            timeout=r["timeout"],
+            model=model,
+            env_overrides=env_overrides,
+        )
+    finally:
+        if env_pool_q is not None and env_overrides is not None:
+            env_pool_q.put(env_overrides)
+
+
 def run_phase_executor(
     runs: list[dict],
     num_workers: int,
     model: str | None,
     resume: bool = False,
+    env_pool: dict[str, list[str]] | None = None,
+    pre_run_script: Path | None = None,
 ) -> list[dict]:
     """Run executor for all `runs`. With resume=True, skip runs whose transcript
     already contains a final result event — that's an externally-verifiable signal
-    of executor success, independent of any later grader failure."""
+    of executor success, independent of any later grader failure.
+
+    `env_pool` and `pre_run_script` are orthogonal extension hooks (either, both,
+    or neither). When `env_pool` is set, each worker thread holds one slot's
+    worth of env values for the duration of a run. When `pre_run_script` is set,
+    it runs before the executor with the same env the executor will see.
+    """
     results = []
     todo = []
     skipped = 0
@@ -608,16 +731,16 @@ def run_phase_executor(
         print(f"[resume] skipping {skipped}/{len(runs)} executor runs already complete",
               file=sys.stderr, flush=True)
 
+    env_pool_q = _build_env_pool_queue(env_pool or {})
+
     with ThreadPoolExecutor(max_workers=num_workers) as pool:
         futures = {
             pool.submit(
-                run_executor,
-                r["run_dir"],
-                r["skill_path"],
-                r["prompt"],
-                r["files"],
-                r["timeout"],
+                _run_one,
+                r,
                 model,
+                pre_run_script,
+                env_pool_q,
             ): r for r in todo
         }
         done = 0
@@ -629,7 +752,12 @@ def run_phase_executor(
                 out = {"exit_code": -1, "timed_out": False, "error": str(e), "timing": {}}
             done += 1
             timing = out.get("timing") or {}
-            status = "OK" if out.get("exit_code") == 0 else f"FAIL exit={out.get('exit_code')}"
+            if out.get("setup_failed"):
+                status = f"FAIL setup exit={out.get('setup_exit_code')}"
+            elif out.get("exit_code") == 0:
+                status = "OK"
+            else:
+                status = f"FAIL exit={out.get('exit_code')}"
             print(
                 f"[exec {done}/{len(todo)}] eval-{r['eval_id']}/{r['variant']}/run-{r['run_number']} {status} "
                 f"tokens={timing.get('total_tokens', 0)} "
@@ -796,6 +924,19 @@ def run_all(
     elif snapshot_path is not None:
         snapshot_path = Path(snapshot_path).resolve()
 
+    pre_run_script_path: Path | None = None
+    if config.defaults.pre_run_script:
+        pre_run_script_path = (skill_path / config.defaults.pre_run_script).resolve()
+        if not pre_run_script_path.exists():
+            raise FileNotFoundError(
+                f"pre_run_script not found: {pre_run_script_path} "
+                f"(declared in evals.json defaults.pre_run_script)"
+            )
+        if not os.access(pre_run_script_path, os.X_OK):
+            raise PermissionError(
+                f"pre_run_script not executable: {pre_run_script_path} (chmod +x?)"
+            )
+
     runs = plan_runs(
         config=config,
         workspace=workspace,
@@ -835,7 +976,14 @@ def run_all(
 
     executor_results: list[dict] = []
     if phase in ("all", "executor"):
-        executor_results = run_phase_executor(runs, num_workers, model, resume=resume)
+        executor_results = run_phase_executor(
+            runs,
+            num_workers,
+            model,
+            resume=resume,
+            env_pool=config.defaults.env_pool,
+            pre_run_script=pre_run_script_path,
+        )
         # Refresh + rewrite manifest between phases so a viewer reading the file
         # sees real status before grading even starts.
         _refresh_manifest_runs(iteration_dir, manifest)

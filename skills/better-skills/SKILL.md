@@ -226,7 +226,9 @@ Run it **from the better-skills directory** (so `python -m scripts.*` resolves).
 
 **Crucial: do NOT read the run `transcript.jsonl` files into the main agent's context.** Stream-json emits every tool call and reasoning event — tens of thousands of tokens per run. The grader (also a subprocess) reads each transcript; the main agent should only look at the script's summary JSON, the manifest, and per-run `grading.json`.
 
-**Environment inheritance.** Each `claude -p` subprocess inherits the parent shell's environment, MCP servers, settings, and Claude Code auth — the only variable the script strips is `CLAUDECODE` (which would otherwise block nesting). Override per run via exported env vars before launching (e.g. `ANTHROPIC_API_KEY=... ANTHROPIC_BASE_URL=... python -m scripts.cli iterate ...`).
+**Environment inheritance.** Each `claude -p` subprocess inherits the parent shell's environment, MCP servers, settings, and Claude Code auth — the only variable the script strips is `CLAUDECODE` (which would otherwise block nesting). Override globally via exported env vars before launching (e.g. `ANTHROPIC_API_KEY=... ANTHROPIC_BASE_URL=... python -m scripts.cli iterate ...`).
+
+For per-run isolation — when parallel runs need their own DB / sandbox / port / API key, or need a setup script to run first — declare `env_pool` and/or `pre_run_script` in `evals.json`'s `defaults`. They're independent hooks: the first hands each worker thread a unique slot of env values, the second runs an arbitrary executable before each executor with that env. See `references/evals-schema.md` ("Per-run isolation") for the full schema and pairing patterns.
 
 **Dashboard upload (silent).** When `SKILL_DASHBOARD_URL` and `SKILL_DASHBOARD_TOKEN` are set in the env, the aggregation step also POSTs the iteration to the dashboard. This is fail-soft — a network error never blocks the workflow but will print `[dashboard] upload failed: …` on stderr. Set `SKILL_DASHBOARD_DISABLED=1` to opt out.
 
