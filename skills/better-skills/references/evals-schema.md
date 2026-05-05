@@ -303,15 +303,18 @@ broken). The keys actually applied are recorded in `run_status.json` as
 
 ## triggers.json
 
-Trigger evals test whether the skill's *description* causes Claude to invoke
-the skill on relevant queries. No variants — the variable being tested is the
-description itself, mutated in-place by `trigger-improve`.
+Trigger evals test whether the skill's *description* causes the configured
+runtime to invoke the skill on relevant queries. No variants — the variable
+being tested is the description itself, mutated in-place by `trigger-improve`.
 
 ```jsonc
 {
   "version": 2,
   "skill_name": "my-skill",
-  "default_model": "claude-opus-4-7",
+  "default_model": "claude-opus-4-7",          // model used by the trigger-test subprocess; provider/model form when executor=opencode
+  "executor": "claude",                        // "claude" or "opencode" — runtime that runs each trigger query
+  "improver_executor": "claude",               // "claude" or "opencode" — runtime that rewrites the description in trigger-loop
+  "improver_model": null,                      // model id for the rewriter; null = inherit default_model when improver_executor==executor, else CLI default
 
   "defaults": {
     "runs_per_query": 3,                       // replicate per query
@@ -334,6 +337,9 @@ description itself, mutated in-place by `trigger-improve`.
   ]
 }
 ```
+
+Pin `executor` once per skill — trigger rates from different runtimes
+aren't directly comparable.
 
 ### Validation rules
 

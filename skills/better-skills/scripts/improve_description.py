@@ -1,8 +1,9 @@
 """Improve a skill description based on eval results.
 
 Takes eval results (from run_eval.py) and generates an improved description
-by calling `claude -p` as a subprocess (same auth pattern as run_eval.py —
-uses the session's Claude Code auth, no separate ANTHROPIC_API_KEY needed).
+by calling the configured improver runtime (`claude -p` or `opencode run`)
+as a subprocess. Both reuse the user's session auth — no separate API key
+needed.
 
 CLI entry point: `scripts.cli trigger-improve`.
 """
@@ -11,26 +12,26 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from .run_functional_eval import EXECUTOR_CLAUDE, EXECUTOR_OPENCODE
 from .utils import parse_skill_md
 
 
-def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
+def _call_claude(prompt: str, model: str | None, timeout: int) -> str:
     """Run `claude -p` with the prompt on stdin and return the text response.
 
     Prompt goes over stdin (not argv) because it embeds the full SKILL.md
-    body and can easily exceed comfortable argv length.
-    """
+    body and can easily exceed comfortable argv length."""
     cmd = ["claude", "-p", "--output-format", "text"]
     if model:
         cmd.extend(["--model", model])
 
-    # Remove CLAUDECODE env var to allow nesting claude -p inside a
-    # Claude Code session. The guard is for interactive terminal conflicts;
-    # programmatic subprocess usage is safe. Same pattern as run_eval.py.
+    # Drop CLAUDECODE so a nesting Claude Code session doesn't bleed into the
+    # child; the guard is for interactive terminal conflicts only.
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
     result = subprocess.run(
@@ -48,18 +49,81 @@ def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
     return result.stdout
 
 
+def _call_opencode(prompt: str, model: str | None, timeout: int) -> str:
+    """Run `opencode run` and return the assembled text response.
+
+    Prompt goes via argv (opencode has no stdin path). Output is NDJSON via
+    --format json; we concat every `text` event, falling back to raw stdout
+    if no text events were emitted."""
+    if not shutil.which("opencode"):
+        raise FileNotFoundError(
+            "opencode CLI not found on PATH. Install it (https://opencode.ai) "
+            "or set improver_executor=claude in triggers.json."
+        )
+    cmd = ["opencode", "run", "--format", "json", "--dangerously-skip-permissions"]
+    if model:
+        cmd.extend(["--model", model])
+    cmd.append(prompt)
+
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"opencode run exited {result.returncode}\nstderr: {result.stderr}"
+        )
+
+    chunks: list[str] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "text":
+            continue
+        part = event.get("part") or {}
+        text = part.get("text") or ""
+        if text:
+            chunks.append(text)
+    return "".join(chunks) if chunks else result.stdout
+
+
+def _call_executor(
+    prompt: str,
+    *,
+    executor: str,
+    model: str | None,
+    timeout: int = 300,
+) -> str:
+    """Dispatch the prompt to the configured improver runtime."""
+    if executor == EXECUTOR_OPENCODE:
+        return _call_opencode(prompt, model, timeout)
+    return _call_claude(prompt, model, timeout)
+
+
 def improve_description(
     skill_name: str,
     skill_content: str,
     current_description: str,
     eval_results: dict,
     history: list[dict],
-    model: str,
+    model: str | None,
     test_results: dict | None = None,
     log_dir: Path | None = None,
     iteration: int | None = None,
+    executor: str = EXECUTOR_CLAUDE,
 ) -> str:
-    """Call Claude to improve the description based on eval results."""
+    """Call the configured improver runtime to rewrite the description based
+    on eval results."""
     failed_triggers = [
         r for r in eval_results["results"]
         if r["should_trigger"] and not r["pass"]
@@ -142,7 +206,7 @@ I'd encourage you to be creative and mix up the style in different iterations si
 
 Please respond with only the new description text in <new_description> tags, nothing else."""
 
-    text = _call_claude(prompt, model)
+    text = _call_executor(prompt, executor=executor, model=model)
 
     match = re.search(r"<new_description>(.*?)</new_description>", text, re.DOTALL)
     description = match.group(1).strip().strip('"') if match else text.strip().strip('"')
@@ -172,7 +236,7 @@ Please respond with only the new description text in <new_description> tags, not
             f"important trigger words and intent coverage. Respond with only "
             f"the new description in <new_description> tags."
         )
-        shorten_text = _call_claude(shorten_prompt, model)
+        shorten_text = _call_executor(shorten_prompt, executor=executor, model=model)
         match = re.search(r"<new_description>(.*?)</new_description>", shorten_text, re.DOTALL)
         shortened = match.group(1).strip().strip('"') if match else shorten_text.strip().strip('"')
 
@@ -194,6 +258,8 @@ Please respond with only the new description text in <new_description> tags, not
 
 def run_from_cli(args: argparse.Namespace) -> dict:
     """Entry point used by `scripts.cli trigger-improve`."""
+    from .config import find_triggers_config, load_triggers_config
+
     skill_path = Path(args.skill_path).resolve()
     if not (skill_path / "SKILL.md").exists():
         raise FileNotFoundError(f"No SKILL.md found at {skill_path}")
@@ -203,13 +269,37 @@ def run_from_cli(args: argparse.Namespace) -> dict:
     if args.history:
         history = json.loads(Path(args.history).read_text())
 
+    # Load triggers.json so we can pick up improver_executor / improver_model;
+    # fall back to defaults if the file is absent (e.g. ad-hoc improver runs).
+    cfg = None
+    try:
+        triggers_json = find_triggers_config(skill_path)
+        cfg = load_triggers_config(triggers_json)
+    except FileNotFoundError:
+        pass
+
     name, _, content = parse_skill_md(skill_path)
     current_description = eval_results["description"]
-    model = args.model or "claude-opus-4-7"
+
+    executor = (
+        getattr(args, "executor", None)
+        or (cfg.improver_executor if cfg else EXECUTOR_CLAUDE)
+    )
+    if args.model:
+        model = args.model
+    elif cfg and cfg.improver_model:
+        model = cfg.improver_model
+    elif cfg and cfg.default_model and executor == cfg.executor:
+        model = cfg.default_model
+    elif executor == EXECUTOR_CLAUDE:
+        model = "claude-opus-4-7"
+    else:
+        model = None  # let opencode pick its default
 
     if args.verbose:
         print(f"Current: {current_description}", file=sys.stderr)
         print(f"Score: {eval_results['summary']['passed']}/{eval_results['summary']['total']}", file=sys.stderr)
+        print(f"Improver: {executor} ({model or 'default'})", file=sys.stderr)
 
     new_description = improve_description(
         skill_name=name,
@@ -218,6 +308,7 @@ def run_from_cli(args: argparse.Namespace) -> dict:
         eval_results=eval_results,
         history=history,
         model=model,
+        executor=executor,
     )
 
     if args.verbose:

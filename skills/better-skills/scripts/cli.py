@@ -322,6 +322,8 @@ def build_parser() -> argparse.ArgumentParser:
     # trigger-eval
     sp = sub.add_parser("trigger-eval", help="Run trigger queries against a description.")
     sp.add_argument("--skill-path", required=True)
+    sp.add_argument("--executor", choices=["claude", "opencode"], default=None,
+                    help="Override triggers.json executor.")
     sp.add_argument("--triggers-json", default=None,
                     help="Default: <skill>/triggers.json.")
     sp.add_argument("--description", default=None)
@@ -338,6 +340,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--skill-path", required=True)
     sp.add_argument("--eval-results", required=True)
     sp.add_argument("--history", default=None)
+    sp.add_argument("--executor", choices=["claude", "opencode"], default=None,
+                    help="Override triggers.json improver_executor.")
     sp.add_argument("--model", default=None)
     sp.add_argument("--verbose", action="store_true")
     sp.set_defaults(handler=cmd_trigger_improve)
@@ -347,6 +351,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--skill-path", required=True)
     sp.add_argument("--triggers-json", default=None)
     sp.add_argument("--description", default=None)
+    sp.add_argument("--executor", choices=["claude", "opencode"], default=None,
+                    help="Override triggers.json executor (the runtime that runs each trigger query).")
+    sp.add_argument("--improver-executor", choices=["claude", "opencode"], default=None,
+                    help="Override triggers.json improver_executor (the runtime that rewrites the description).")
     sp.add_argument("--num-workers", type=int, default=None)
     sp.add_argument("--timeout", type=int, default=None)
     sp.add_argument("--max-iterations", type=int, default=None)
@@ -354,6 +362,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--trigger-threshold", type=float, default=None)
     sp.add_argument("--holdout", type=float, default=None)
     sp.add_argument("--model", default=None)
+    sp.add_argument("--improver-model", default=None,
+                    help="Override triggers.json improver_model (model id used by the description rewriter).")
     sp.add_argument("--verbose", action="store_true")
     sp.add_argument("--report", default="auto")
     sp.add_argument("--results-dir", default=None)

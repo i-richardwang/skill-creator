@@ -264,7 +264,10 @@ class TriggersConfig(BaseModel):
 
     version: int = Field(CONFIG_VERSION)
     skill_name: str | None = None
-    default_model: str | None = None
+    default_model: str | None = Field(None, description="Model id for the trigger-test subprocess. Use `provider/model` form when executor=opencode.")
+    executor: Literal["claude", "opencode"] = Field("claude", description="Agent runtime that runs each trigger query.")
+    improver_executor: Literal["claude", "opencode"] = Field("claude", description="Agent runtime that rewrites the description in trigger-loop. Independent of `executor`.")
+    improver_model: str | None = Field(None, description="Model id for the description rewriter. When unset, falls back to `default_model` if improver_executor matches executor, otherwise the CLI's own default.")
     defaults: TriggerDefaults = Field(default_factory=TriggerDefaults)
     queries: list[TriggerQuery] = Field(..., min_length=1)
 

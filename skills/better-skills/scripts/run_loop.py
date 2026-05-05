@@ -20,6 +20,7 @@ from .config import find_triggers_config, load_triggers_config
 from .generate_report import generate_html
 from .improve_description import improve_description
 from .run_eval import find_project_root, run_eval
+from .run_functional_eval import EXECUTOR_CLAUDE
 from .utils import parse_skill_md
 
 
@@ -56,13 +57,16 @@ def run_loop(
     runs_per_query: int,
     trigger_threshold: float,
     holdout: float,
-    model: str,
+    model: str | None,
     verbose: bool,
     live_report_path: Path | None = None,
     log_dir: Path | None = None,
+    executor: str = EXECUTOR_CLAUDE,
+    improver_executor: str = EXECUTOR_CLAUDE,
+    improver_model: str | None = None,
 ) -> dict:
     """Run the eval + improvement loop."""
-    project_root = find_project_root()
+    project_root = find_project_root(executor)
     name, original_description, content = parse_skill_md(skill_path)
     current_description = description_override or original_description
 
@@ -98,6 +102,7 @@ def run_loop(
             runs_per_query=runs_per_query,
             trigger_threshold=trigger_threshold,
             model=model,
+            executor=executor,
         )
         eval_elapsed = time.time() - t0
 
@@ -204,9 +209,12 @@ def run_loop(
             current_description=current_description,
             eval_results=train_results,
             history=blinded_history,
-            model=model,
+            model=improver_model if improver_model is not None else (
+                model if improver_executor == executor else None
+            ),
             log_dir=log_dir,
             iteration=iteration,
+            executor=improver_executor,
         )
         improve_elapsed = time.time() - t0
 
@@ -279,6 +287,24 @@ def run_from_cli(args: argparse.Namespace) -> dict:
 
     log_dir = results_dir / "logs" if results_dir else None
 
+    executor = getattr(args, "executor", None) or cfg.executor
+    improver_executor = getattr(args, "improver_executor", None) or cfg.improver_executor
+    if args.model:
+        model = args.model
+    elif cfg.default_model:
+        model = cfg.default_model
+    elif executor == EXECUTOR_CLAUDE:
+        model = "claude-opus-4-7"
+    else:
+        model = None  # let opencode pick its default
+
+    if getattr(args, "improver_model", None):
+        improver_model = args.improver_model
+    elif cfg.improver_model:
+        improver_model = cfg.improver_model
+    else:
+        improver_model = None  # falls through to model when executors match
+
     output = run_loop(
         eval_set=eval_set,
         skill_path=skill_path,
@@ -289,10 +315,13 @@ def run_from_cli(args: argparse.Namespace) -> dict:
         runs_per_query=args.runs_per_query or cfg.defaults.runs_per_query,
         trigger_threshold=args.trigger_threshold or cfg.defaults.trigger_threshold,
         holdout=args.holdout if args.holdout is not None else cfg.defaults.holdout,
-        model=args.model or cfg.default_model or "claude-opus-4-7",
+        model=model,
         verbose=args.verbose,
         live_report_path=live_report_path,
         log_dir=log_dir,
+        executor=executor,
+        improver_executor=improver_executor,
+        improver_model=improver_model,
     )
 
     if results_dir:
