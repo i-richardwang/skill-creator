@@ -1,51 +1,29 @@
-> **Note:** This repository contains Anthropic's implementation of skills for Claude. For information about the Agent Skills standard, see [agentskills.io](http://agentskills.io).
+> **Origin:** Forked from [anthropics/skills](https://github.com/anthropics/skills) and reworked from a demo-skill catalogue into an eval-driven authoring toolchain — a `better-skills` CLI that owns the build / measure / iterate loop, plus a trajectory dashboard that archives every run. For the Agent Skills standard itself, see [agentskills.io](http://agentskills.io).
 
-# Skills
-Skills are folders of instructions, scripts, and resources that Claude loads dynamically to improve performance on specialized tasks. Skills teach Claude how to complete specific tasks in a repeatable way, whether that's creating documents with your company's brand guidelines, analyzing data using your organization's specific workflows, or automating personal tasks.
+# better-skills
 
-For more information, check out:
-- [What are skills?](https://support.claude.com/en/articles/12512176-what-are-skills)
-- [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)
-- [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills)
-- [Equipping agents for the real world with Agent Skills](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+A measurement-first workbench for building and iterating on Agent Skills. Instead of writing a `SKILL.md` and hoping it triggers correctly, this repo treats every skill as something you instrument: capture variants (with / without / older versions), run parallel `claude -p` evaluations, score the trajectories, and watch the pass-rate delta evolve across iterations.
 
-# About This Repository
+# How this differs from upstream
 
-This repository contains skills that demonstrate what's possible with Claude's skills system. These skills range from creative applications (art, music, design) to technical tasks (testing web apps, MCP server generation) to enterprise workflows (communications, branding, etc.).
+The original `anthropics/skills` is a curated catalogue of demonstration skills (docx, pdf, brand assets, etc.). This repo keeps spec compatibility but replaces the catalogue framing with a **build → measure → iterate loop**:
 
-Each skill is self-contained in its own folder with a `SKILL.md` file containing the instructions and metadata that Claude uses. Browse through these skills to get inspiration for your own skills or to understand different patterns and approaches.
+- A single CLI (`better-skills`) owns the whole lifecycle — scaffolding `evals.json`, snapshotting variants, running parallel evaluations, optimising descriptions for trigger accuracy, and uploading results.
+- A pluggable grader / improver layer so eval scoring isn't tied to a single runtime (Claude and OpenCode supported alongside each other).
+- A trajectory dashboard with per-iteration pass-rate diffs, so skill quality becomes a number you can watch move.
+- An updated `SKILL.md` authoring methodology built around the eval loop rather than vibe-coding.
 
-Many skills in this repo are open source (Apache 2.0). We've also included the document creation & editing skills that power [Claude's document capabilities](https://www.anthropic.com/news/create-files) under the hood in the [`skills/docx`](./skills/docx), [`skills/pdf`](./skills/pdf), [`skills/pptx`](./skills/pptx), and [`skills/xlsx`](./skills/xlsx) subfolders. These are source-available, not open source, but we wanted to share these with developers as a reference for more complex skills that are actively used in a production AI application.
+# What's in this repo
 
-## Disclaimer
-
-**These skills are provided for demonstration and educational purposes only.** While some of these capabilities may be available in Claude, the implementations and behaviors you receive from Claude may differ from what is shown in these skills. These skills are meant to illustrate patterns and possibilities. Always test skills thoroughly in your own environment before relying on them for critical tasks.
-
-# Skill Sets
-- [./skills](./skills): Skill examples for Creative & Design, Development & Technical, Enterprise & Communication, and Document Skills
-- [./spec](./spec): The Agent Skills specification
-- [./dashboard](./dashboard): Web dashboard that archives skill iteration history (Next.js + PostgreSQL)
+- **[`skills/better-skills`](./skills/better-skills)** — the meta-skill that teaches Claude *how to build other skills*, plus the Python CLI of the same name. See its [`SKILL.md`](./skills/better-skills/SKILL.md) for the authoring methodology and [`references/`](./skills/better-skills/references) for the eval / trigger schemas.
+- **[`dashboard/`](./dashboard)** — a Next.js + PostgreSQL dashboard that archives every eval run and surfaces per-iteration pass-rate diffs.
+- **[`spec/`](./spec)** — the Agent Skills specification this work follows.
 
 # Installation
 
-Install via [skills.sh](https://skills.sh) CLI:
+Install the `better-skills` CLI from the skill folder:
 
 ```bash
-npx skills add i-richardwang/better-skills
-```
-
-Install globally:
-
-```bash
-npx skills add i-richardwang/better-skills -g
-```
-
-# `better-skills` CLI
-
-The [`better-skills` skill](./skills/better-skills) ships with a Python CLI of the same name for authoring and iteratively improving Agent Skills. Subcommands cover the full lifecycle: scaffolding `evals.json` templates, capturing skill snapshots, running parallel `claude -p` evaluations across variants (with/without/old-version), aggregating per-iteration benchmarks, optimising descriptions for trigger accuracy, and uploading results to the dashboard.
-
-```bash
-# From the better-skills skill directory:
 cd skills/better-skills
 pip install -e .
 
@@ -56,11 +34,16 @@ better-skills iterate --skill-path <skill-path> --workspace <name>-eval
 better-skills view
 ```
 
-See [`skills/better-skills/SKILL.md`](./skills/better-skills/SKILL.md) for the authoring methodology and [`skills/better-skills/references/`](./skills/better-skills/references) for the eval / trigger schemas.
+To add the `better-skills` skill to a Claude Code project via [skills.sh](https://skills.sh):
 
-# Creating a Basic Skill
+```bash
+npx skills add i-richardwang/better-skills      # project-local
+npx skills add i-richardwang/better-skills -g   # global
+```
 
-Skills are simple to create - just a folder with a `SKILL.md` file containing YAML frontmatter and instructions:
+# What is an Agent Skill?
+
+A folder with a `SKILL.md` that has YAML frontmatter and instructions Claude follows when the skill triggers:
 
 ```markdown
 ---
@@ -71,24 +54,10 @@ description: A clear description of what this skill does and when to use it
 # My Skill Name
 
 [Add your instructions here that Claude will follow when this skill is active]
-
-## Examples
-- Example usage 1
-- Example usage 2
-
-## Guidelines
-- Guideline 1
-- Guideline 2
 ```
 
-The frontmatter requires only two fields:
-- `name` - A unique identifier for your skill (lowercase, hyphens for spaces)
-- `description` - A complete description of what the skill does and when to use it
+The frontmatter requires only:
+- `name` — unique identifier (lowercase, hyphens for spaces)
+- `description` — what the skill does and when to use it
 
-The markdown content below contains the instructions, examples, and guidelines that Claude will follow. For more details, see [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills).
-
-# Partner Skills
-
-Skills are a great way to teach Claude how to get better at using specific pieces of software. As we see awesome example skills from partners, we may highlight some of them here:
-
-- **Notion** - [Notion Skills for Claude](https://www.notion.so/notiondevs/Notion-Skills-for-Claude-28da4445d27180c7af1df7d8615723d0)
+For background on the spec itself: [What are skills?](https://support.claude.com/en/articles/12512176-what-are-skills) · [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude) · [Creating custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills) · [Equipping agents for the real world with Agent Skills](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills).

@@ -23,7 +23,7 @@ export default async function PortfolioPage() {
     <div className="space-y-10">
       <section className="space-y-3">
         <p className="text-muted-foreground font-mono text-[10px] tracking-[0.2em] uppercase">
-          Skill-creator · eval trajectory archive
+          better-skills · eval trajectory archive
         </p>
         <h1 className="font-heading max-w-3xl text-4xl leading-[1.05] tracking-tight md:text-5xl">
           Every iteration on every skill, recorded and compared.

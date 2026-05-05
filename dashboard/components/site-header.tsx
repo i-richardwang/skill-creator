@@ -24,7 +24,7 @@ export function SiteHeader() {
             Portfolio
           </Link>
           <a
-            href="https://github.com/anthropics/skills"
+            href="https://github.com/i-richardwang/better-skills"
             target="_blank"
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors"
