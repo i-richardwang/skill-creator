@@ -155,7 +155,7 @@ class CaseConfig(BaseModel):
     name: str | None = Field(None, description="Human-readable label; falls back to 'eval-<id>'.")
     prompt: str | None = Field(None, description="Inline prompt body. Mutually exclusive with prompt_file.")
     prompt_file: str | None = Field(None, description="Path (relative to skill dir) to a markdown file containing the prompt.")
-    files: list[str] = Field(default_factory=list, description="Input file paths mentioned in the executor prompt. Files must already exist on disk; this script does not materialize them.")
+    files: list[str] = Field(default_factory=list, description="Input file paths mentioned in the executor prompt. Files must already exist on disk; this script does not materialize them. Relative paths are resolved against the skill directory (where evals.json lives) so they survive the runner's cwd isolation.")
     expectations: list[str] = Field(default_factory=list, description="Assertion strings the grader checks against the transcript + outputs.")
     timeout_s: int | None = Field(None, ge=1, description="Override defaults.timeout_s for this case.")
     env: dict[str, str] = Field(

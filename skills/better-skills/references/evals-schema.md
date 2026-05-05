@@ -56,7 +56,9 @@ Use `python -m scripts.cli init <skill-path>` to scaffold starter templates.
       "prompt": "Create a bar chart from ...", // inline OR prompt_file (XOR)
       "prompt_file": null,                     // path relative to skill dir
       "files": [                               // file paths mentioned in prompt
-        "data.csv"                             // (must already exist; not materialized)
+        "data.csv"                             // relative paths resolve to <skill>/data.csv;
+                                               // absolute paths pass through unchanged.
+                                               // (must already exist; not materialized)
       ],
       "expectations": [                        // grader's pass/fail criteria
         "produces a chart with axis labels",

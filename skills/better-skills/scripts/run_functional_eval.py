@@ -15,6 +15,7 @@ env inherits everything except CLAUDECODE so `claude -p` can nest inside a
 Claude Code session.
 """
 
+import hashlib
 import json
 import os
 import queue
@@ -50,6 +51,47 @@ STATUS_PENDING = "pending"
 STATUS_EXECUTED = "executed"
 STATUS_GRADED = "graded"
 STATUS_FAILED = "failed"
+
+# Place each run's cwd outside any project tree so Claude Code's project-local
+# discovery (cwd-upward `.claude/skills/`, project `CLAUDE.md`, `.claude/commands/`)
+# cannot leak into the executor's system prompt and break the with/without
+# comparison. The executor receives absolute paths for input files and outputs,
+# so the empty cwd is invisible to the agent.
+#
+# Scope: this closes the *project-level* asymmetric leak. Symmetric global leakage
+# from `~/.claude/skills/` (skills the user has installed for personal use) is NOT
+# closed — closing it would require wiping HOME, which loses Claude Code's auth.
+# Don't install the skill being tested globally during evals.
+ISO_CWD_ROOT = Path("/tmp/better-skills-iso")
+
+
+def _isolated_cwd(run_dir: Path) -> Path:
+    """Materialise an isolated cwd outside any project tree.
+
+    The slug embeds the run_dir's last 4 path components for human-readable
+    debugging; a sha1 prefix prevents collisions when two workspaces share
+    the same iteration/eval/variant/run layout.
+    """
+    slug = "-".join(run_dir.parts[-4:])
+    h = hashlib.sha1(str(run_dir.resolve()).encode()).hexdigest()[:8]
+    iso = ISO_CWD_ROOT / f"{slug}-{h}"
+    iso.mkdir(parents=True, exist_ok=True)
+    return iso
+
+
+def _resolve_case_file(file_ref: str, skill_path: Path) -> str:
+    """Resolve case.files entries to absolute paths.
+
+    With cwd moved to `/tmp/better-skills-iso/...`, relative paths in the
+    envelope's "Input files: ..." line would no longer resolve where the user
+    intended (they assumed cwd was inside the skill or workspace). Resolve
+    against skill_path — the natural anchor since evals.json lives there.
+    Already-absolute paths pass through.
+    """
+    p = Path(file_ref)
+    if p.is_absolute():
+        return str(p)
+    return str((skill_path / p).resolve())
 
 
 def _env(overrides: dict | None = None) -> dict:
@@ -418,13 +460,20 @@ def build_executor_envelope(
     skill_path: Path | None,
     prompt: str,
     files: list[str],
+    outputs_dir: Path,
 ) -> str:
-    """Construct the executor prompt: skill hint + outputs hint + input files + user prompt."""
+    """Construct the executor prompt: skill hint + outputs hint + input files + user prompt.
+
+    `outputs_dir` is the absolute path where outputs must be saved. We pass
+    an absolute path because the executor's cwd is in `/tmp/better-skills-iso/`
+    (see `_isolated_cwd`), so a relative `./outputs/` would land in the iso
+    dir instead of the run_dir the grader expects.
+    """
     lines = []
     if skill_path:
-        lines.append(f"Use the skill at {skill_path}. Save any outputs to ./outputs/.")
+        lines.append(f"Use the skill at {skill_path}. Save any outputs to {outputs_dir}/.")
     else:
-        lines.append("Save any outputs to ./outputs/.")
+        lines.append(f"Save any outputs to {outputs_dir}/.")
     if files:
         lines.append(f"Input files: {', '.join(files)}")
     lines.append("")
@@ -450,21 +499,27 @@ def run_executor(
     values (which may contain secrets).
 
     `executor` selects the agent runtime. "claude" spawns `claude -p` (the
-    default); "opencode" spawns `opencode run` after planting per-run skill
-    isolation under run_dir.
+    default); "opencode" spawns `opencode run`.
+
+    The subprocess cwd is an isolated `/tmp/better-skills-iso/...` directory,
+    not run_dir — so Claude Code's project-local discovery cannot reach the
+    skill being tested through cwd-upward `.claude/` traversal. Outputs still
+    land in `run_dir/outputs/` because the envelope uses absolute paths.
     """
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "outputs").mkdir(exist_ok=True)
+    outputs_dir = (run_dir / "outputs").resolve()
+    outputs_dir.mkdir(exist_ok=True)
     transcript = run_dir / "transcript.jsonl"
     stderr = run_dir / "stderr.log"
 
-    envelope = build_executor_envelope(skill_path, prompt, files)
+    envelope = build_executor_envelope(skill_path, prompt, files, outputs_dir)
+    iso_cwd = _isolated_cwd(run_dir)
 
     start_iso, start_wall = _now_iso(), time.time()
     spawn = run_opencode if executor == EXECUTOR_OPENCODE else run_claude_p
     exit_code, timed_out = spawn(
         prompt=envelope,
-        cwd=run_dir,
+        cwd=iso_cwd,
         transcript_path=transcript,
         stderr_path=stderr,
         timeout=timeout,
@@ -543,6 +598,12 @@ def run_grader(
         f"Write grading.json to: {grading_path}\n"
     )
 
+    # Same isolation as the executor: grader cwd in `/tmp/better-skills-iso/`
+    # so project-level `.claude/skills/` (e.g. check/think/hunt helpers) doesn't
+    # silently bias the grader. transcript_path / outputs_dir / grading_path
+    # in the prompt are already absolute, so cwd doesn't affect file access.
+    iso_cwd = _isolated_cwd(run_dir)
+
     start_iso, start_wall = _now_iso(), time.time()
     if grader_executor == EXECUTOR_OPENCODE:
         # OpenCode has no --append-system-prompt equivalent on `opencode run`;
@@ -554,7 +615,7 @@ def run_grader(
         )
         exit_code, timed_out = run_opencode(
             prompt=merged_prompt,
-            cwd=run_dir,
+            cwd=iso_cwd,
             transcript_path=grader_transcript,
             stderr_path=grader_stderr,
             timeout=timeout,
@@ -563,7 +624,7 @@ def run_grader(
     else:
         exit_code, timed_out = run_claude_p(
             prompt=user_prompt + "Follow your system-prompt instructions.\n",
-            cwd=run_dir,
+            cwd=iso_cwd,
             transcript_path=grader_transcript,
             stderr_path=grader_stderr,
             timeout=timeout,
@@ -666,6 +727,10 @@ def plan_runs(
 
     Variant names come from the config (no hardcoded with_skill/without_skill); the
     aggregator discovers them via manifest.configs.
+
+    `case.files` entries are resolved to absolute paths against `skill_path`
+    here, since the executor's cwd is `/tmp/better-skills-iso/...` where
+    relative paths would no longer find the user's intended fixture files.
     """
     iteration_dir = workspace / f"iteration-{iteration}"
     runs: list[dict] = []
@@ -676,6 +741,7 @@ def plan_runs(
         prompt = config.resolve_prompt(case, skill_path)
         eval_name = case.name or f"eval-{case.id}"
         expectations = list(case.expectations)
+        resolved_files = [_resolve_case_file(f, skill_path) for f in case.files]
 
         metadata = {
             "eval_id": case.id,
@@ -689,7 +755,7 @@ def plan_runs(
             "eval_id": case.id,
             "eval_name": eval_name,
             "prompt": prompt,
-            "files": list(case.files),
+            "files": resolved_files,
             "expectations": expectations,
             "timeout": case.timeout_s or default_timeout,
             "case_env": dict(case.env),
